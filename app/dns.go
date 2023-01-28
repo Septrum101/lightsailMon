@@ -16,7 +16,7 @@ func LookupIP(name string) []string {
 
 	req, err := http.NewRequest("GET", "https://doh.pub/dns-query", nil)
 	if err != nil {
-		log.Fatal(err)
+		log.Error(err)
 	}
 
 	req.Header.Add("accept", "application/dns-json")
