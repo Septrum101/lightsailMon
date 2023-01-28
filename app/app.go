@@ -31,7 +31,7 @@ loop:
 			if count > 3 {
 				return err
 			}
-			log.Infof("%v, attempt retry.. (%d/3)", err, count)
+			log.Infof("%v attempt retry.. (%d/3)", err, count)
 			time.Sleep(time.Second * 5)
 			goto loop
 		} else {

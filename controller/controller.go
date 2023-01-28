@@ -110,7 +110,7 @@ func (s *Server) handleBlockNodes() {
 
 		// The next change IP must more than 10min
 		if !time.Now().After(node.lastChangeIP.Add(time.Minute * 10)) {
-			log.Infof("%s: The last change IP time less than 10min", node.address)
+			log.Debugf("%s: The last change IP time less than 10min", node.address)
 			continue
 		}
 
@@ -158,7 +158,7 @@ func (s *Server) handleBlockNodes() {
 			}
 
 			// Allocate Static Ip
-			log.Debugf("[Region: %p] Allocate Static Ip", svc.Config.Region)
+			log.Debugf("[Region: %s] Allocate Static Ip", *svc.Config.Region)
 			if _, err := svc.AllocateStaticIp(&lightsail.AllocateStaticIpInput{
 				StaticIpName: aws.String("LightsailMon"),
 			}); err != nil {
@@ -166,14 +166,14 @@ func (s *Server) handleBlockNodes() {
 			}
 
 			// handle change IP
-			log.Infof("[Region: %p] Start change block nodes IP", svc.Config.Region)
+			log.Infof("[Region: %s] Start change block nodes IP", *svc.Config.Region)
 			for i := range blockNodes {
 				n := blockNodes[i]
 				n.changeIP(instanceMap)
 			}
 
 			// release static IP
-			log.Debugf("[Region: %p] Release Static IP", svc.Config.Region)
+			log.Debugf("[Region: %s] Release Static IP", *svc.Config.Region)
 			if _, err := svc.ReleaseStaticIp(&lightsail.ReleaseStaticIpInput{
 				StaticIpName: aws.String("LightsailMon"),
 			}); err != nil {

@@ -14,7 +14,7 @@ func LookupIP(name string) []string {
 		Timeout: time.Second * 20,
 	}
 
-	req, err := http.NewRequest("GET", "https://doh.pub/dns-query", nil)
+	req, err := http.NewRequest("GET", "https://1.1.1.1/dns-query", nil)
 	if err != nil {
 		log.Error(err)
 	}
