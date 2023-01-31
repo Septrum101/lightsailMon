@@ -8,36 +8,26 @@ import (
 	log "github.com/sirupsen/logrus"
 )
 
-func CheckConnection(addr string, port int, t int) error {
+func CheckConnection(ip string, port int, t int, network string) error {
 	var (
 		conn net.Conn
 		err  error
 	)
 
-	defer func() {
-		if conn != nil {
-			conn.Close()
+	for i := 0; ; i++ {
+		if network == "tcp6" {
+			ip = "[" + ip + "]"
 		}
-	}()
-
-	ips := LookupIP(addr)
-	count := 0
-loop:
-	for i := range ips {
-		// only check ipv4 address
-		conn, err = net.DialTimeout("tcp4", ips[i]+":"+strconv.Itoa(port), time.Second*time.Duration(t))
+		conn, err = net.DialTimeout(network, ip+":"+strconv.Itoa(port), time.Second*time.Duration(t))
 		if err != nil {
-			count++
-			if count > 3 {
+			log.Infof("%v attempt retry.. (%d/3)", err, i+1)
+			if i == 2 {
 				return err
 			}
-			log.Infof("%v attempt retry.. (%d/3)", err, count)
 			time.Sleep(time.Second * 5)
-			goto loop
 		} else {
+			conn.Close()
 			return nil
 		}
 	}
-
-	return err
 }

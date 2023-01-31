@@ -1,4 +1,4 @@
-package app
+package dns
 
 import (
 	"io"
@@ -9,12 +9,24 @@ import (
 	log "github.com/sirupsen/logrus"
 )
 
-func LookupIP(name string) []string {
+var networkType = map[string]string{
+	"tcp4": "1",
+	"tcp6": "28",
+}
+
+func New(network string, server string) *DoHClient {
+	return &DoHClient{
+		network:    network,
+		nameserver: server,
+	}
+}
+
+func (d *DoHClient) LookupIP(name string) []string {
 	client := http.Client{
 		Timeout: time.Second * 20,
 	}
 
-	req, err := http.NewRequest("GET", "https://1.1.1.1/dns-query", nil)
+	req, err := http.NewRequest("GET", d.nameserver, nil)
 	if err != nil {
 		log.Error(err)
 	}
@@ -23,7 +35,7 @@ func LookupIP(name string) []string {
 
 	q := req.URL.Query()
 	q.Add("name", name)
-	q.Add("type", "1")
+	q.Add("type", networkType[d.network])
 	req.URL.RawQuery = q.Encode()
 
 	res, err := client.Do(req)

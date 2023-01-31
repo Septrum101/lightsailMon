@@ -1,10 +1,11 @@
 package config
 
 type Config struct {
-	LogLevel string     `yaml:"LogLevel"`
-	Internal int        `yaml:"Internal"`
-	Timeout  int        `yaml:"Timeout"`
-	Accounts []*Account `yaml:"Accounts"`
+	LogLevel   string     `yaml:"LogLevel"`
+	Internal   int        `yaml:"Internal"`
+	Timeout    int        `yaml:"Timeout"`
+	Nameserver string     `yaml:"Nameserver"`
+	Accounts   []*Account `yaml:"Accounts"`
 }
 
 type Account struct {
@@ -19,6 +20,7 @@ type Region struct {
 }
 
 type Node struct {
+	Network string `yaml:"Network"`
 	Address string `yaml:"Address"`
 	Port    int    `yaml:"Port"`
 }

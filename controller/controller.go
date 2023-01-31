@@ -6,6 +6,7 @@ import (
 	"net"
 	"net/http"
 	"strconv"
+	"sync"
 	"time"
 
 	"github.com/aws/aws-sdk-go/aws"
@@ -16,6 +17,7 @@ import (
 	log "github.com/sirupsen/logrus"
 
 	"github.com/thank243/lightsailMon/app"
+	"github.com/thank243/lightsailMon/app/dns"
 	"github.com/thank243/lightsailMon/config"
 )
 
@@ -48,9 +50,11 @@ func New(c *config.Config) *Server {
 			for iii := range r.Nodes {
 				n := r.Nodes[iii]
 				s.nodes = append(s.nodes, &node{
-					address: n.Address,
-					port:    n.Port,
-					svc:     svc,
+					network:    n.Network,
+					address:    n.Address,
+					port:       n.Port,
+					svc:        svc,
+					nameserver: dns.New(n.Network, c.Nameserver),
 				})
 			}
 		}
@@ -60,16 +64,14 @@ func New(c *config.Config) *Server {
 }
 
 func (s *Server) Start() {
-	log.Infoln(config.AppName, "Starting..")
+	fmt.Println(config.AppName, "Starting..")
 	s.running = true
 
 	// On init start, do once check
 	s.task()
 
 	// cron check
-	if _, err := s.cron.AddFunc(fmt.Sprintf("@every %ds", s.internal), func() {
-		s.task()
-	}); err != nil {
+	if _, err := s.cron.AddFunc(fmt.Sprintf("@every %ds", s.internal), s.task); err != nil {
 		log.Panic(err)
 	}
 
@@ -77,11 +79,13 @@ func (s *Server) Start() {
 }
 
 func (s *Server) task() {
-	if s.cronRunning {
+	if s.cronRunning.Load() {
 		return
 	}
 
-	s.cronRunning = true
+	s.cronRunning.Store(true)
+	defer s.cronRunning.Store(false)
+
 	// check local network connection
 	resp, err := http.Get("http://www.gstatic.com/generate_204")
 	if err != nil {
@@ -97,8 +101,6 @@ func (s *Server) task() {
 	}
 
 	s.handleBlockNodes()
-
-	s.cronRunning = false
 }
 
 func (s *Server) handleBlockNodes() {
@@ -110,22 +112,33 @@ func (s *Server) handleBlockNodes() {
 
 		// The next change IP must more than 10min
 		if !time.Now().After(node.lastChangeIP.Add(time.Minute * 10)) {
-			log.Debugf("%s: The last change IP time less than 10min", node.address)
+			log.Debugf("[%s:%d] The last IP change period time less than 10min", node.address, node.port)
 			continue
 		}
 
 		addr := fmt.Sprint(node.address + ":" + strconv.Itoa(node.port))
 		credValue, _ := node.svc.Config.Credentials.Get()
-		if err := app.CheckConnection(node.address, node.port, s.timeout); err != nil {
-			if v, ok := err.(*net.OpError); ok && v.Addr != nil {
-				// add to blockNodes
-				blockNodes = append(blockNodes, node)
-				svcMap[node.svc] = 0
-			}
-			log.Errorf("[AccessKeyID: %s] %s %v", credValue.AccessKeyID, addr, err)
 
-		} else {
-			log.Infof("[AccessKeyID: %s] %s is online", credValue.AccessKeyID, addr)
+		// resolve ips for domain
+		ips := node.nameserver.LookupIP(node.address)
+		flag := false
+		for i := range ips {
+			if err := app.CheckConnection(ips[i], node.port, s.timeout, node.network); err != nil {
+				if v, ok := err.(*net.OpError); ok && v.Addr != nil {
+					flag = true
+				}
+				log.Errorf("[AccessKeyID: %s] %s %v", credValue.AccessKeyID, addr, err)
+			} else {
+				log.Infof("[AccessKeyID: %s] %s is online", credValue.AccessKeyID, addr)
+				flag = false
+				break
+			}
+		}
+
+		if flag {
+			// add to blockNodes
+			blockNodes = append(blockNodes, node)
+			svcMap[node.svc] = 0
 		}
 	}
 
@@ -158,22 +171,39 @@ func (s *Server) handleBlockNodes() {
 			}
 
 			// Allocate Static Ip
-			log.Debugf("[Region: %s] Allocate Static Ip", *svc.Config.Region)
+			log.Debugf("[Region: %s] Allocate region static IP", *svc.Config.Region)
 			if _, err := svc.AllocateStaticIp(&lightsail.AllocateStaticIpInput{
 				StaticIpName: aws.String("LightsailMon"),
 			}); err != nil {
 				log.Error(err)
 			}
+		}
 
-			// handle change IP
-			log.Infof("[Region: %s] Start change block nodes IP", *svc.Config.Region)
-			for i := range blockNodes {
-				n := blockNodes[i]
+		// handle change block IP
+		var wg sync.WaitGroup
+
+		worker := make(chan *node, 10)
+		defer close(worker)
+
+		for i := range blockNodes {
+			wg.Add(1)
+			worker <- blockNodes[i]
+
+			go func() {
+				defer wg.Done()
+
+				n := <-worker
+				log.Errorf("[%s:%d] Change node IP", n.address, n.port)
+
 				n.changeIP(instanceMap)
-			}
+				n.lastChangeIP = time.Now()
+			}()
+		}
+		wg.Wait()
 
-			// release static IP
-			log.Debugf("[Region: %s] Release Static IP", *svc.Config.Region)
+		// release static IPs
+		for svc := range svcMap {
+			log.Debugf("[Region: %s] Release region static IP", *svc.Config.Region)
 			if _, err := svc.ReleaseStaticIp(&lightsail.ReleaseStaticIpInput{
 				StaticIpName: aws.String("LightsailMon"),
 			}); err != nil {
