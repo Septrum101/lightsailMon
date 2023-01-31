@@ -7,6 +7,9 @@ import (
 )
 
 func (n *node) changeIP(nameMap map[string]string) {
+	n.svc.Lock()
+	defer n.svc.Unlock()
+
 	ips := n.nameserver.LookupIP(n.address)
 	for i := range ips {
 		if v, ok := nameMap[ips[i]]; ok {
@@ -28,6 +31,8 @@ func (n *node) changeIP(nameMap map[string]string) {
 			}
 
 			return
+		} else {
+			log.Debugf("cannot found any instances with IP %s", ips[i])
 		}
 	}
 }

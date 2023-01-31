@@ -13,6 +13,7 @@ Accounts:
           - Address: node1.test.com # The node domain
             Port: 8080 # The node port
             Network: tcp4 # The type of network (tcp4, tcp6)
+
       - Name: ap-southeast-1 # AWS service endpoints, check https://docs.aws.amazon.com/general/latest/gr/rande.html for help
         Nodes:
           - Address: node2.test.com # The node domain
@@ -27,6 +28,7 @@ Accounts:
 #          - Address: node3.test.com
 #            Port: 8080
 #            Network: tcp4 # The type of network (tcp4, tcp6)
+#
 #      - Name: ap-southeast-1
 #        Nodes:
 #          - Address: node4.test.com

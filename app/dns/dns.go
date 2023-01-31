@@ -63,5 +63,8 @@ func (d *DoHClient) LookupIP(name string) []string {
 			ips = append(ips, i.(string))
 		}
 	}
+	if len(ips) == 0 {
+		log.Errorf("%s cannot resolve ", name)
+	}
 	return ips
 }

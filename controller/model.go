@@ -28,6 +28,11 @@ type node struct {
 	address      string
 	port         int
 	lastChangeIP time.Time
-	svc          *lightsail.Lightsail
+	svc          svc
 	nameserver   *dns.DoHClient
+}
+
+type svc struct {
+	*sync.RWMutex
+	*lightsail.Lightsail
 }

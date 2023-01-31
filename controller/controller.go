@@ -6,6 +6,7 @@ import (
 	"net"
 	"net/http"
 	"strconv"
+	"sync"
 	"time"
 
 	"github.com/aws/aws-sdk-go/aws"
@@ -54,7 +55,10 @@ func New(c *config.Config) *Server {
 			r := a.Regions[ii]
 
 			// create lightsail svc
-			svc := lightsail.New(sess, aws.NewConfig().WithRegion(r.Name))
+			svc := svc{
+				RWMutex:   new(sync.RWMutex),
+				Lightsail: lightsail.New(sess, aws.NewConfig().WithRegion(r.Name)),
+			}
 
 			for iii := range r.Nodes {
 				n := r.Nodes[iii]
@@ -113,14 +117,14 @@ func (s *Server) task() {
 
 func (s *Server) handleBlockNodes() {
 	var blockNodes []*node
-	svcMap := make(map[*lightsail.Lightsail]uint8)
+	svcMap := make(map[svc]uint8)
 
 	for k := range s.nodes {
 		node := s.nodes[k]
 
 		// The next change IP must more than 10min
 		if !time.Now().After(node.lastChangeIP.Add(time.Minute * 10)) {
-			log.Debugf("[%s:%d] The last IP change period time less than 10min", node.address, node.port)
+			log.Infof("[%s:%d] The last IP change period time less than 10min", node.address, node.port)
 			continue
 		}
 
@@ -173,7 +177,7 @@ func (s *Server) handleBlockNodes() {
 					log.Error(err)
 				}
 
-				// create ip:name map
+				// create map: {ip: name}
 				for i := range ins.Instances {
 					inst := ins.Instances[i]
 					if inst != nil {
