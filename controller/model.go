@@ -1,6 +1,7 @@
 package controller
 
 import (
+	"sync"
 	"sync/atomic"
 	"time"
 
@@ -11,12 +12,15 @@ import (
 )
 
 type Server struct {
+	sync.RWMutex
 	running     bool
 	internal    int
 	timeout     int
 	nodes       []*node
 	cron        *cron.Cron
 	cronRunning atomic.Bool
+	wg          sync.WaitGroup
+	worker      chan *node
 }
 
 type node struct {

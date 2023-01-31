@@ -30,13 +30,6 @@ func main() {
 		log.Panic(err)
 	}
 
-	// init log level
-	if l, err := log.ParseLevel(c.LogLevel); err != nil {
-		log.Panic(err)
-	} else {
-		log.SetLevel(l)
-	}
-
 	// start server
 	s := controller.New(c)
 	s.Start()

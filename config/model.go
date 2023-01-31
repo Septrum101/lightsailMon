@@ -5,6 +5,7 @@ type Config struct {
 	Internal   int        `yaml:"Internal"`
 	Timeout    int        `yaml:"Timeout"`
 	Nameserver string     `yaml:"Nameserver"`
+	Concurrent int        `yaml:"Concurrent"`
 	Accounts   []*Account `yaml:"Accounts"`
 }
 

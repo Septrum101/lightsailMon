@@ -6,7 +6,6 @@ import (
 	"net"
 	"net/http"
 	"strconv"
-	"sync"
 	"time"
 
 	"github.com/aws/aws-sdk-go/aws"
@@ -22,10 +21,20 @@ import (
 )
 
 func New(c *config.Config) *Server {
-	s := new(Server)
-	s.cron = cron.New()
-	s.internal = c.Internal
-	s.timeout = c.Timeout
+	s := &Server{
+		cron:     cron.New(),
+		internal: c.Internal,
+		timeout:  c.Timeout,
+		worker:   make(chan *node, c.Concurrent),
+	}
+
+	// init log level
+	if l, err := log.ParseLevel(c.LogLevel); err != nil {
+		log.Panic(err)
+	} else {
+		log.SetLevel(l)
+		fmt.Printf("Log level: %s  (Concurrent: %d)\n", c.LogLevel, c.Concurrent)
+	}
 
 	for i := range c.Accounts {
 		a := c.Accounts[i]
@@ -64,11 +73,9 @@ func New(c *config.Config) *Server {
 }
 
 func (s *Server) Start() {
-	fmt.Println(config.AppName, "Starting..")
-	s.running = true
-
 	// On init start, do once check
-	s.task()
+	defer s.task()
+	s.running = true
 
 	// cron check
 	if _, err := s.cron.AddFunc(fmt.Sprintf("@every %ds", s.internal), s.task); err != nil {
@@ -76,6 +83,7 @@ func (s *Server) Start() {
 	}
 
 	s.cron.Start()
+	log.Warnln(config.AppName, "Started")
 }
 
 func (s *Server) task() {
@@ -116,31 +124,42 @@ func (s *Server) handleBlockNodes() {
 			continue
 		}
 
-		addr := fmt.Sprint(node.address + ":" + strconv.Itoa(node.port))
-		credValue, _ := node.svc.Config.Credentials.Get()
+		s.wg.Add(1)
+		s.worker <- node
 
-		// resolve ips for domain
-		ips := node.nameserver.LookupIP(node.address)
-		flag := false
-		for i := range ips {
-			if err := app.CheckConnection(ips[i], node.port, s.timeout, node.network); err != nil {
-				if v, ok := err.(*net.OpError); ok && v.Addr != nil {
-					flag = true
+		go func() {
+			defer s.wg.Done()
+
+			n := <-s.worker
+			addr := fmt.Sprint(n.address + ":" + strconv.Itoa(n.port))
+			credValue, _ := n.svc.Config.Credentials.Get()
+
+			// resolve ips for domain
+			ips := n.nameserver.LookupIP(n.address)
+			flag := false
+			for i := range ips {
+				if err := app.CheckConnection(ips[i], n.port, s.timeout, n.network); err != nil {
+					if v, ok := err.(*net.OpError); ok && v.Addr != nil {
+						flag = true
+					}
+					log.Errorf("[AccessKeyID: %s] %s %v", credValue.AccessKeyID, addr, err)
+				} else {
+					log.Infof("[AccessKeyID: %s] %s is online", credValue.AccessKeyID, addr)
+					flag = false
+					break
 				}
-				log.Errorf("[AccessKeyID: %s] %s %v", credValue.AccessKeyID, addr, err)
-			} else {
-				log.Infof("[AccessKeyID: %s] %s is online", credValue.AccessKeyID, addr)
-				flag = false
-				break
 			}
-		}
 
-		if flag {
-			// add to blockNodes
-			blockNodes = append(blockNodes, node)
-			svcMap[node.svc] = 0
-		}
+			if flag {
+				s.Lock()
+				defer s.Unlock()
+				// add to blockNodes
+				blockNodes = append(blockNodes, n)
+				svcMap[n.svc] = 0
+			}
+		}()
 	}
+	s.wg.Wait()
 
 	if len(blockNodes) > 0 {
 		instanceMap := make(map[string]string)
@@ -180,26 +199,21 @@ func (s *Server) handleBlockNodes() {
 		}
 
 		// handle change block IP
-		var wg sync.WaitGroup
-
-		worker := make(chan *node, 10)
-		defer close(worker)
-
 		for i := range blockNodes {
-			wg.Add(1)
-			worker <- blockNodes[i]
+			s.wg.Add(1)
+			s.worker <- blockNodes[i]
 
 			go func() {
-				defer wg.Done()
+				defer s.wg.Done()
 
-				n := <-worker
+				n := <-s.worker
 				log.Errorf("[%s:%d] Change node IP", n.address, n.port)
 
 				n.changeIP(instanceMap)
 				n.lastChangeIP = time.Now()
 			}()
 		}
-		wg.Wait()
+		s.wg.Wait()
 
 		// release static IPs
 		for svc := range svcMap {
