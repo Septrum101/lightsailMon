@@ -20,7 +20,7 @@ type Server struct {
 	cron        *cron.Cron
 	cronRunning atomic.Bool
 	wg          sync.WaitGroup
-	worker      chan *node
+	worker      chan uint8
 }
 
 type node struct {

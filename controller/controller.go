@@ -26,7 +26,7 @@ func New(c *config.Config) *Server {
 		cron:     cron.New(),
 		internal: c.Internal,
 		timeout:  c.Timeout,
-		worker:   make(chan *node, c.Concurrent),
+		worker:   make(chan uint8, c.Concurrent),
 	}
 
 	// init log level
@@ -129,20 +129,22 @@ func (s *Server) handleBlockNodes() {
 		}
 
 		s.wg.Add(1)
-		s.worker <- node
+		s.worker <- 0
 
 		go func() {
-			defer s.wg.Done()
+			defer func() {
+				<-s.worker
+				s.wg.Done()
+			}()
 
-			n := <-s.worker
-			addr := fmt.Sprint(n.address + ":" + strconv.Itoa(n.port))
-			credValue, _ := n.svc.Config.Credentials.Get()
+			addr := fmt.Sprint(node.address + ":" + strconv.Itoa(node.port))
+			credValue, _ := node.svc.Config.Credentials.Get()
 
 			// resolve ips for domain
-			ips := n.nameserver.LookupIP(n.address)
+			ips := node.nameserver.LookupIP(node.address)
 			flag := false
 			for i := range ips {
-				if err := app.CheckConnection(ips[i], n.port, s.timeout, n.network); err != nil {
+				if err := app.CheckConnection(ips[i], node.port, s.timeout, node.network); err != nil {
 					if v, ok := err.(*net.OpError); ok && v.Addr != nil {
 						flag = true
 					}
@@ -158,8 +160,8 @@ func (s *Server) handleBlockNodes() {
 				s.Lock()
 				defer s.Unlock()
 				// add to blockNodes
-				blockNodes = append(blockNodes, n)
-				svcMap[n.svc] = 0
+				blockNodes = append(blockNodes, node)
+				svcMap[node.svc] = 0
 			}
 		}()
 	}
@@ -205,12 +207,15 @@ func (s *Server) handleBlockNodes() {
 		// handle change block IP
 		for i := range blockNodes {
 			s.wg.Add(1)
-			s.worker <- blockNodes[i]
+			s.worker <- 0
+			n := blockNodes[i]
 
 			go func() {
-				defer s.wg.Done()
+				defer func() {
+					<-s.worker
+					s.wg.Done()
+				}()
 
-				n := <-s.worker
 				log.Errorf("[%s:%d] Change node IP", n.address, n.port)
 
 				n.changeIP(instanceMap)
