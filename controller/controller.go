@@ -144,14 +144,13 @@ func (s *Server) handleBlockNodes() {
 			ips := node.nameserver.LookupIP(node.address)
 			flag := false
 			for i := range ips {
-				start := time.Now()
-				if err := app.CheckConnection(ips[i], node.port, s.timeout, node.network); err != nil {
+				if delay, err := app.CheckConnection(ips[i], node.port, s.timeout, node.network); err != nil {
 					if v, ok := err.(*net.OpError); ok && v.Addr != nil {
 						flag = true
 					}
 					log.Errorf("[AccessKeyID: %s] %s %v", credValue.AccessKeyID, addr, err)
 				} else {
-					log.Infof("[AccessKeyID: %s] %s Tcping: %d ms", credValue.AccessKeyID, addr, time.Since(start).Milliseconds())
+					log.Infof("[AccessKeyID: %s] %s Tcping: %d ms", credValue.AccessKeyID, addr, delay)
 					flag = false
 					break
 				}
