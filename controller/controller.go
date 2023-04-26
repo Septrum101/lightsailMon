@@ -59,12 +59,15 @@ func New(c *config.Config) *Server {
 				n := r.Nodes[iii]
 
 				// init ddns client
-				var dnsSelected ddns.DDNS
-				switch c.DDNS.Name {
+				var ddnsCli ddns.Client
+				switch c.DDNS.Provider {
 				case "cloudflare":
-					dnsSelected = &ddns.Cloudflare{}
+					ddnsCli = &ddns.Cloudflare{}
 				}
-				dnsSelected.Init(c.DDNS, n.Domain)
+				err := ddnsCli.Init(c.DDNS, n.Domain)
+				if err != nil {
+					log.Panicln(err)
+				}
 
 				s.nodes = append(s.nodes, &node{
 					name:       n.InstanceName,
@@ -72,7 +75,7 @@ func New(c *config.Config) *Server {
 					domain:     n.Domain,
 					port:       n.Port,
 					svc:        svc,
-					ddnsClient: dnsSelected,
+					ddnsClient: ddnsCli,
 				})
 			}
 		}

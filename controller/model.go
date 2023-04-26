@@ -31,5 +31,5 @@ type node struct {
 	port         int
 	lastChangeIP time.Time
 	svc          *lightsail.Lightsail
-	ddnsClient   ddns.DDNS
+	ddnsClient   ddns.Client
 }

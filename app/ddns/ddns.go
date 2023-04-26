@@ -4,7 +4,7 @@ import (
 	"github.com/thank243/lightsailMon/config"
 )
 
-type DDNS interface {
-	Init(c *config.DNS, d string)
+type Client interface {
+	Init(c *config.DDNS, d string) error
 	AddUpdateDomainRecords(network string, ipAddr string)
 }

@@ -1,62 +1,30 @@
 package ddns
 
 import (
-	"bytes"
-	"encoding/json"
-	"fmt"
-	"io"
-	"net/http"
 	"strings"
+	"time"
 
+	"github.com/cloudflare/cloudflare-go"
 	log "github.com/sirupsen/logrus"
+	"golang.org/x/net/context"
 
 	"github.com/thank243/lightsailMon/config"
 )
 
-const (
-	zonesAPI string = "https://api.cloudflare.com/client/v4/zones"
-)
-
-// Cloudflare implement
+// Cloudflare Implementation
 type Cloudflare struct {
-	Domain string
-	Secret string
+	domain string
+	client *cloudflare.API
 }
 
-// CloudflareZonesResp cloudflare zones result
-type CloudflareZonesResp struct {
-	CloudflareStatus
-	Result []struct {
-		ID     string
-		Name   string
-		Status string
-		Paused bool
+func (cf *Cloudflare) Init(c *config.DDNS, d string) error {
+	cf.domain = d
+	client, err := cloudflare.New(c.DNSEnv[strings.ToLower("CLOUDFLARE_API_KEY")], c.DNSEnv[strings.ToLower("CLOUDFLARE_EMAIL")])
+	if err != nil {
+		return err
 	}
-}
-
-// CloudflareRecordsResp records response
-type CloudflareRecordsResp struct {
-	CloudflareStatus
-	Result []CloudflareRecord
-}
-
-// CloudflareRecord records
-type CloudflareRecord struct {
-	ID      string `json:"id"`
-	Name    string `json:"name"`
-	Type    string `json:"type"`
-	Content string `json:"content"`
-}
-
-// CloudflareStatus public status
-type CloudflareStatus struct {
-	Success  bool
-	Messages []string
-}
-
-func (cf *Cloudflare) Init(c *config.DNS, d string) {
-	cf.Domain = d
-	cf.Secret = c.Secret
+	cf.client = client
+	return nil
 }
 
 // AddUpdateDomainRecords create or update IPv4/IPv6 records
@@ -70,148 +38,66 @@ func (cf *Cloudflare) AddUpdateDomainRecords(network string, ipAddr string) {
 }
 
 func (cf *Cloudflare) addUpdateDomainRecords(recordType string, ipAddr string) {
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second*10)
+	defer cancel()
 
 	if ipAddr == "" {
 		return
 	}
 
-	// get zone
+	zones, err := cf.client.ListZones(ctx)
+	if err != nil {
+		log.Error(err)
+		return
+	}
+
+	// Get zone
 	zoneID := ""
-	zoneName := cf.Domain
-	for {
-		dList := strings.Split(zoneName, ".")
-		if len(dList) == 1 {
-			break
+	for i := range zones {
+		if strings.Contains(cf.domain, zones[i].Name) {
+			zoneID = zones[i].ID
 		}
-		result, err := cf.getZones(zoneName)
-		if err != nil || len(result.Result) != 1 {
-			zoneName = strings.Join(dList[1:], ".")
-			continue
-		}
-		zoneID = result.Result[0].ID
-		break
 	}
 	if zoneID == "" {
 		log.Error("cannot find a valid zone")
 		return
 	}
 
-	var records CloudflareRecordsResp
-	// getDomains max records is 50
-	err := cf.request(
-		"GET",
-		fmt.Sprintf(zonesAPI+"/%s/dns_records?type=%s&name=%s&per_page=50", zoneID, recordType, cf.Domain),
-		nil,
-		&records,
-	)
-
-	if err != nil || !records.Success {
+	records, _, err := cf.client.ListDNSRecords(ctx, cloudflare.ZoneIdentifier(zoneID), cloudflare.ListDNSRecordsParams{
+		Type: recordType,
+		Name: cf.domain,
+	})
+	if err != nil {
 		log.Error(err)
 		return
 	}
-
-	if len(records.Result) > 0 {
-		// update
-		cf.modify(records, zoneID, cf.Domain, ipAddr)
-	} else {
-		// create new record
-		cf.create(zoneID, cf.Domain, recordType, ipAddr)
-	}
-
-}
-
-// create records
-func (cf *Cloudflare) create(zoneID string, domain string, recordType string, ipAddr string) {
-	record := &CloudflareRecord{
-		Type:    recordType,
-		Name:    domain,
-		Content: ipAddr,
-	}
-	var status CloudflareStatus
-	err := cf.request(
-		"POST",
-		fmt.Sprintf(zonesAPI+"/%s/dns_records", zoneID),
-		record,
-		&status,
-	)
-	if err == nil && status.Success {
-		log.Printf("Create record %s success! IP: %s", domain, ipAddr)
-	} else {
-		log.Printf("Create record %s failure! Messages: %s", domain, status.Messages)
-	}
-}
-
-// update records
-func (cf *Cloudflare) modify(result CloudflareRecordsResp, zoneID string, domain string, ipAddr string) {
-	for _, record := range result.Result {
-		if record.Content == ipAddr {
-			log.Printf("Your IP %s have no change, domain %s", ipAddr, domain)
-			continue
+	if len(records) > 0 {
+		for i := range records {
+			if records[i].Content == ipAddr {
+				log.Warnf("Your IP %s have no change, domain %s", ipAddr, cf.domain)
+				return
+			}
+			_, err = cf.client.UpdateDNSRecord(ctx, cloudflare.ZoneIdentifier(zoneID), cloudflare.UpdateDNSRecordParams{
+				Type:    recordType,
+				ID:      records[i].ID,
+				Content: ipAddr,
+			})
+			if err != nil {
+				log.Errorf("Update record %s failure, Error: %s", cf.domain, err)
+				return
+			}
+			log.Printf("Update record %s success, IP: %s", cf.domain, ipAddr)
 		}
-
-		var status CloudflareStatus
-		record.Content = ipAddr
-		err := cf.request(
-			"PUT",
-			fmt.Sprintf(zonesAPI+"/%s/dns_records/%s", zoneID, record.ID),
-			record,
-			&status,
-		)
-		if err == nil && status.Success {
-			log.Printf("Create record %s success! IP: %s", domain, ipAddr)
-		} else {
-			log.Printf("Create record %s failure! Messages: %s", domain, status.Messages)
+	} else {
+		_, err := cf.client.CreateDNSRecord(ctx, cloudflare.ZoneIdentifier(zoneID), cloudflare.CreateDNSRecordParams{
+			Type:    recordType,
+			Name:    cf.domain,
+			Content: ipAddr,
+		})
+		if err != nil {
+			log.Errorf("Create record %s failure, Error: %s", cf.domain, err)
+			return
 		}
+		log.Printf("Create record %s success, IP: %s", cf.domain, ipAddr)
 	}
-}
-
-// get records list
-func (cf *Cloudflare) getZones(domain string) (result CloudflareZonesResp, err error) {
-	err = cf.request(
-		"GET",
-		fmt.Sprintf(zonesAPI+"?name=%s&status=%s&per_page=%s", domain, "active", "50"),
-		nil,
-		&result,
-	)
-
-	return
-}
-
-func (cf *Cloudflare) request(method string, url string, data interface{}, result interface{}) (err error) {
-	jsonStr := make([]byte, 0)
-	if data != nil {
-		jsonStr, _ = json.Marshal(data)
-	}
-	req, err := http.NewRequest(
-		method,
-		url,
-		bytes.NewBuffer(jsonStr),
-	)
-	if err != nil {
-		log.Println("http.NewRequest failure. Error: ", err)
-		return
-	}
-	req.Header.Set("Authorization", "Bearer "+cf.Secret)
-	req.Header.Set("Content-Type", "application/json")
-
-	client := http.Client{}
-	resp, err := client.Do(req)
-	if err != nil {
-		return err
-	}
-
-	defer resp.Body.Close()
-	body, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return err
-	}
-	json.Unmarshal(body, &result)
-
-	if resp.StatusCode >= 300 {
-		errMsg := fmt.Sprintf("request %s failure! content: %s , status code: %d\n", url, string(body), resp.StatusCode)
-		log.Println(errMsg)
-		err = fmt.Errorf(errMsg)
-	}
-
-	return
 }
