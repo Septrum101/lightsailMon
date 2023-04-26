@@ -6,8 +6,11 @@ An AWS Lightsail monitor service that can auto change blocked IP.
 LogLevel: warning # Log level: debug, info, warn, error, fatal, panic
 Internal: 300 # Time to check the node connection (unit: second)
 Timeout: 15 # Timeout for the tcp request (unit: second)
-Nameserver: https://1.1.1.1/dns-query # Custom DoH DNS server
 Concurrent: 20 # Max concurrent on nodes check
+DDNS:
+  Name: cloudflare
+  ID:
+  Secret: YOUR_TOKEN
 
 Accounts:
   - AccessKeyID: YOUR_AWS_AccessKeyID
@@ -15,12 +18,15 @@ Accounts:
     Regions:
       - Name: ap-northeast-1 # AWS service endpoints, check https://docs.aws.amazon.com/general/latest/gr/rande.html for help
         Nodes:
-          - Address: node1.test.com # The node domain
+          - InstanceName: Debian-1
+            Address: node1.test.com # The node domain
             Port: 8080 # The node port
             Network: tcp4 # The type of network (tcp4, tcp6)
+
       - Name: ap-southeast-1 # AWS service endpoints, check https://docs.aws.amazon.com/general/latest/gr/rande.html for help
         Nodes:
-          - Address: node2.test.com # The node domain
+          - InstanceName: Debian-1
+            Address: node2.test.com # The node domain
             Port: 8080 # The node port
             Network: tcp6 # The type of network (tcp4, tcp6)
 
@@ -29,12 +35,13 @@ Accounts:
 #    Regions:
 #      - Name: ap-northeast-1
 #        Nodes:
-#          - Address: node3.test.com
-#            Port: 8080
+#          - InstanceName: Debian-1
+#            Address: node3.test.com # The node domain
 #            Network: tcp4 # The type of network (tcp4, tcp6)
+#
 #      - Name: ap-southeast-1
 #        Nodes:
-#          - Address: node4.test.com
-#            Port: 8080
+#          - InstanceName: Debian-1
+#            Address: node4.test.com # The node domain
 #            Network: tcp4 # The type of network (tcp4, tcp6)
 ```
