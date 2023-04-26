@@ -152,7 +152,12 @@ func (s *Server) handleBlockNodes() {
 					log.Error(err)
 					return
 				}
-				node.ip = aws.StringValue(inst.Instance.PublicIpAddress)
+				switch node.network {
+				case "tcp4":
+					node.ip = aws.StringValue(inst.Instance.PublicIpAddress)
+				case "tcp6":
+					node.ip = aws.StringValue(inst.Instance.Ipv6Addresses[0])
+				}
 			}
 
 			if delay, err := app.CheckConnection(node.ip, node.port, s.timeout, node.network); err != nil {
