@@ -8,7 +8,7 @@ import (
 	"github.com/aws/aws-sdk-go/service/lightsail"
 	"github.com/robfig/cron/v3"
 
-	"github.com/thank243/lightsailMon/app/dns"
+	"github.com/thank243/lightsailMon/app/ddns"
 )
 
 type Server struct {
@@ -24,15 +24,12 @@ type Server struct {
 }
 
 type node struct {
+	name         string
 	network      string
-	address      string
+	domain       string
+	ip           string
 	port         int
 	lastChangeIP time.Time
-	svc          svc
-	nameserver   *dns.DoHClient
-}
-
-type svc struct {
-	*sync.RWMutex
-	*lightsail.Lightsail
+	svc          *lightsail.Lightsail
+	ddnsClient   ddns.DDNS
 }

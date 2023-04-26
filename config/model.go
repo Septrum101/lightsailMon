@@ -6,6 +6,7 @@ type Config struct {
 	Timeout    int        `yaml:"Timeout"`
 	Nameserver string     `yaml:"Nameserver"`
 	Concurrent int        `yaml:"Concurrent"`
+	DDNS       *DNS       `yaml:"DDNS"`
 	Accounts   []*Account `yaml:"Accounts"`
 }
 
@@ -21,7 +22,14 @@ type Region struct {
 }
 
 type Node struct {
-	Network string `yaml:"Network"`
-	Address string `yaml:"Address"`
-	Port    int    `yaml:"Port"`
+	InstanceName string `yaml:"InstanceName"`
+	Network      string `yaml:"Network"`
+	Domain       string `yaml:"Domain"`
+	Port         int    `yaml:"Port"`
+}
+
+type DNS struct {
+	Name   string
+	ID     string
+	Secret string
 }
