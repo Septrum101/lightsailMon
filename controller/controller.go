@@ -38,7 +38,7 @@ func New(c *config.Config) *Server {
 
 	// init notifier
 	var noti notify.Notify
-	if c.Notify.Enable {
+	if c.Notify != nil && c.Notify.Enable {
 		switch c.Notify.Provider {
 		case "pushplus":
 			noti = &notify.PushPlus{Token: c.Notify.Config["pushplus_token"]}
@@ -74,7 +74,7 @@ func New(c *config.Config) *Server {
 					svc:     svc,
 				}
 				// init ddns client
-				if c.DDNS.Enable {
+				if c.DDNS != nil && c.DDNS.Enable {
 					var ddnsCli ddns.Client
 					switch c.DDNS.Provider {
 					case "cloudflare":
@@ -88,7 +88,7 @@ func New(c *config.Config) *Server {
 				}
 
 				// init notifier
-				if c.Notify.Enable {
+				if c.Notify != nil && c.Notify.Enable {
 					initNode.notifier = noti
 				}
 
