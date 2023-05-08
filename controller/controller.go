@@ -15,8 +15,8 @@ import (
 	"github.com/robfig/cron/v3"
 	log "github.com/sirupsen/logrus"
 
-	"github.com/thank243/lightsailMon/app"
-	"github.com/thank243/lightsailMon/app/ddns"
+	"github.com/thank243/lightsailMon/common/ddns"
+	"github.com/thank243/lightsailMon/common/notify"
 	"github.com/thank243/lightsailMon/config"
 )
 
@@ -34,6 +34,15 @@ func New(c *config.Config) *Server {
 	} else {
 		log.SetLevel(l)
 		fmt.Printf("Log level: %s  (Concurrent: %d)\n", c.LogLevel, c.Concurrent)
+	}
+
+	// init notifier
+	var noti notify.Notify
+	if c.Notify.Enable {
+		switch c.Notify.Provider {
+		case "pushplus":
+			noti = &notify.PushPlus{Token: c.Notify.Config["pushplus_token"]}
+		}
 	}
 
 	for i := range c.Accounts {
@@ -57,26 +66,33 @@ func New(c *config.Config) *Server {
 
 			for iii := range r.Nodes {
 				n := r.Nodes[iii]
-
+				initNode := &node{
+					name:    n.InstanceName,
+					network: n.Network,
+					domain:  n.Domain,
+					port:    n.Port,
+					svc:     svc,
+				}
 				// init ddns client
-				var ddnsCli ddns.Client
-				switch c.DDNS.Provider {
-				case "cloudflare":
-					ddnsCli = &ddns.Cloudflare{}
-				}
-				err := ddnsCli.Init(c.DDNS, n.Domain)
-				if err != nil {
-					log.Panicln(err)
+				if c.DDNS.Enable {
+					var ddnsCli ddns.Client
+					switch c.DDNS.Provider {
+					case "cloudflare":
+						ddnsCli = &ddns.Cloudflare{}
+					}
+					err := ddnsCli.Init(c.DDNS.Config, n.Domain)
+					if err != nil {
+						log.Panicln(err)
+					}
+					initNode.ddnsClient = ddnsCli
 				}
 
-				s.nodes = append(s.nodes, &node{
-					name:       n.InstanceName,
-					network:    n.Network,
-					domain:     n.Domain,
-					port:       n.Port,
-					svc:        svc,
-					ddnsClient: ddnsCli,
-				})
+				// init notifier
+				if c.Notify.Enable {
+					initNode.notifier = noti
+				}
+
+				s.nodes = append(s.nodes, initNode)
 			}
 		}
 	}
@@ -132,7 +148,7 @@ func (s *Server) handleBlockNodes() {
 
 		// The next change IP must more than 10min
 		if !time.Now().After(node.lastChangeIP.Add(time.Minute * 10)) {
-			log.Infof("[%s:%d] The last IP change period time less than 10min", node.domain, node.port)
+			log.Infof("[%s:%d] Skip, Last IP update time is less than 10min", node.domain, node.port)
 			continue
 		}
 
@@ -163,7 +179,7 @@ func (s *Server) handleBlockNodes() {
 				}
 			}
 
-			if delay, err := app.CheckConnection(node.ip, node.port, s.timeout, node.network); err != nil {
+			if delay, err := node.checkConnection(s.timeout); err != nil {
 				if v, ok := err.(*net.OpError); ok && v.Addr != nil {
 					s.Lock()
 					defer s.Unlock()
@@ -171,9 +187,9 @@ func (s *Server) handleBlockNodes() {
 					blockNodes = append(blockNodes, node)
 					svcMap[node.svc] = 0
 				}
-				log.Errorf("[AccessKeyID: %s] %s %v", credValue.AccessKeyID, addr, err)
+				log.Errorf("[AKID: %s] %s %v", credValue.AccessKeyID, addr, err)
 			} else {
-				log.Infof("[AccessKeyID: %s] %s Tcping: %d ms", credValue.AccessKeyID, addr, delay)
+				log.Infof("[%s] Tcping: %d ms", addr, delay)
 			}
 
 		}()

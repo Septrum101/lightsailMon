@@ -7,6 +7,7 @@ type Config struct {
 	Nameserver string     `yaml:"Nameserver"`
 	Concurrent int        `yaml:"Concurrent"`
 	DDNS       *DDNS      `yaml:"DDNS"`
+	Notify     *Notify    `yaml:"Notify"`
 	Accounts   []*Account `yaml:"Accounts"`
 }
 
@@ -29,6 +30,13 @@ type Node struct {
 }
 
 type DDNS struct {
+	Enable   bool
 	Provider string
-	DNSEnv   map[string]string
+	Config   map[string]string
+}
+
+type Notify struct {
+	Enable   bool
+	Provider string
+	Config   map[string]string
 }

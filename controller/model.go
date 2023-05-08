@@ -8,7 +8,8 @@ import (
 	"github.com/aws/aws-sdk-go/service/lightsail"
 	"github.com/robfig/cron/v3"
 
-	"github.com/thank243/lightsailMon/app/ddns"
+	"github.com/thank243/lightsailMon/common/ddns"
+	"github.com/thank243/lightsailMon/common/notify"
 )
 
 type Server struct {
@@ -32,4 +33,5 @@ type node struct {
 	lastChangeIP time.Time
 	svc          *lightsail.Lightsail
 	ddnsClient   ddns.Client
+	notifier     notify.Notify
 }

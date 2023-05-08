@@ -1,6 +1,11 @@
 package controller
 
 import (
+	"fmt"
+	"net"
+	"strconv"
+	"time"
+
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/service/lightsail"
 	log "github.com/sirupsen/logrus"
@@ -62,5 +67,43 @@ func (n *node) changeIP() {
 	}
 
 	// Update domain record
-	n.ddnsClient.AddUpdateDomainRecords(n.network, n.ip)
+	if err := n.ddnsClient.AddUpdateDomainRecords(n.network, n.ip); err != nil {
+		log.Error(err)
+		return
+	}
+
+	if err := n.notifier.Webhook(fmt.Sprintf("[%s] IP changed: %s", n.domain, n.ip)); err != nil {
+		log.Error(err)
+	} else {
+		log.Infof("[%s:%d] Push message success", n.domain, n.port)
+	}
+}
+
+func (n *node) checkConnection(t int) (int64, error) {
+	var (
+		conn    net.Conn
+		err     error
+		ip      = n.ip
+		port    = n.port
+		network = n.network
+	)
+
+	for i := 0; ; i++ {
+		if network == "tcp6" {
+			ip = "[" + ip + "]"
+		}
+		start := time.Now()
+		conn, err = net.DialTimeout(network, ip+":"+strconv.Itoa(port), time.Second*time.Duration(t))
+		d := time.Since(start)
+		if err != nil {
+			log.Infof("%v attempt retry.. (%d/3)", err, i+1)
+			if i == 2 {
+				return 0, err
+			}
+			time.Sleep(time.Second * 5)
+		} else {
+			conn.Close()
+			return d.Milliseconds(), nil
+		}
+	}
 }

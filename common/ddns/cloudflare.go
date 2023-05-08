@@ -1,14 +1,14 @@
 package ddns
 
 import (
+	"errors"
+	"fmt"
 	"strings"
 	"time"
 
 	"github.com/cloudflare/cloudflare-go"
 	log "github.com/sirupsen/logrus"
 	"golang.org/x/net/context"
-
-	"github.com/thank243/lightsailMon/config"
 )
 
 // Cloudflare Implementation
@@ -17,9 +17,9 @@ type Cloudflare struct {
 	client *cloudflare.API
 }
 
-func (cf *Cloudflare) Init(c *config.DDNS, d string) error {
+func (cf *Cloudflare) Init(c map[string]string, d string) error {
 	cf.domain = d
-	client, err := cloudflare.New(c.DNSEnv[strings.ToLower("CLOUDFLARE_API_KEY")], c.DNSEnv[strings.ToLower("CLOUDFLARE_EMAIL")])
+	client, err := cloudflare.New(c[strings.ToLower("CLOUDFLARE_API_KEY")], c[strings.ToLower("CLOUDFLARE_EMAIL")])
 	if err != nil {
 		return err
 	}
@@ -28,27 +28,28 @@ func (cf *Cloudflare) Init(c *config.DDNS, d string) error {
 }
 
 // AddUpdateDomainRecords create or update IPv4/IPv6 records
-func (cf *Cloudflare) AddUpdateDomainRecords(network string, ipAddr string) {
+func (cf *Cloudflare) AddUpdateDomainRecords(network string, ipAddr string) error {
 	switch network {
 	case "tcp4":
-		cf.addUpdateDomainRecords("A", ipAddr)
+		return cf.addUpdateDomainRecords("A", ipAddr)
 	case "tcp6":
-		cf.addUpdateDomainRecords("AAAA", ipAddr)
+		return cf.addUpdateDomainRecords("AAAA", ipAddr)
+	default:
+		return errors.New("not support network")
 	}
 }
 
-func (cf *Cloudflare) addUpdateDomainRecords(recordType string, ipAddr string) {
+func (cf *Cloudflare) addUpdateDomainRecords(recordType string, ipAddr string) error {
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second*10)
 	defer cancel()
 
 	if ipAddr == "" {
-		return
+		return errors.New("IP address is nil")
 	}
 
 	zones, err := cf.client.ListZones(ctx)
 	if err != nil {
-		log.Error(err)
-		return
+		return err
 	}
 
 	// Get zone
@@ -59,8 +60,7 @@ func (cf *Cloudflare) addUpdateDomainRecords(recordType string, ipAddr string) {
 		}
 	}
 	if zoneID == "" {
-		log.Error("cannot find a valid zone")
-		return
+		return errors.New("cannot find a valid zone")
 	}
 
 	records, _, err := cf.client.ListDNSRecords(ctx, cloudflare.ZoneIdentifier(zoneID), cloudflare.ListDNSRecordsParams{
@@ -68,14 +68,12 @@ func (cf *Cloudflare) addUpdateDomainRecords(recordType string, ipAddr string) {
 		Name: cf.domain,
 	})
 	if err != nil {
-		log.Error(err)
-		return
+		return err
 	}
 	if len(records) > 0 {
 		for i := range records {
 			if records[i].Content == ipAddr {
-				log.Warnf("Your IP %s have no change, domain %s", ipAddr, cf.domain)
-				return
+				return fmt.Errorf("[%s] IP %s have no change", cf.domain, ipAddr)
 			}
 			_, err = cf.client.UpdateDNSRecord(ctx, cloudflare.ZoneIdentifier(zoneID), cloudflare.UpdateDNSRecordParams{
 				Type:    recordType,
@@ -83,10 +81,9 @@ func (cf *Cloudflare) addUpdateDomainRecords(recordType string, ipAddr string) {
 				Content: ipAddr,
 			})
 			if err != nil {
-				log.Errorf("Update record %s failure, Error: %s", cf.domain, err)
-				return
+				return fmt.Errorf("[%s] update record failure, Error: %s", cf.domain, err)
 			}
-			log.Printf("Update record %s success, IP: %s", cf.domain, ipAddr)
+			log.Printf("[%s] update record success, IP: %s", cf.domain, ipAddr)
 		}
 	} else {
 		_, err := cf.client.CreateDNSRecord(ctx, cloudflare.ZoneIdentifier(zoneID), cloudflare.CreateDNSRecordParams{
@@ -95,9 +92,9 @@ func (cf *Cloudflare) addUpdateDomainRecords(recordType string, ipAddr string) {
 			Content: ipAddr,
 		})
 		if err != nil {
-			log.Errorf("Create record %s failure, Error: %s", cf.domain, err)
-			return
+			return fmt.Errorf("[%s] create record failure, Error: %s", cf.domain, err)
 		}
-		log.Printf("Create record %s success, IP: %s", cf.domain, ipAddr)
+		log.Printf("[%s] create record success, IP: %s", cf.domain, ipAddr)
 	}
+	return nil
 }
