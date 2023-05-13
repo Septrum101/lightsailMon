@@ -6,7 +6,6 @@ import (
 	"net"
 	"net/http"
 	"strconv"
-	"time"
 
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/aws/credentials"
@@ -145,13 +144,6 @@ func (s *Server) handleBlockNodes() {
 
 	for k := range s.nodes {
 		node := s.nodes[k]
-
-		// The next change IP must more than 10min
-		if !time.Now().After(node.lastChangeIP.Add(time.Minute * 10)) {
-			log.Infof("[%s:%d] Skip, Last IP update time is less than 10min", node.domain, node.port)
-			continue
-		}
-
 		s.wg.Add(1)
 		s.worker <- 0
 
@@ -222,7 +214,6 @@ func (s *Server) handleBlockNodes() {
 				log.Errorf("[%s:%d] Change node IP", n.domain, n.port)
 
 				n.changeIP()
-				n.lastChangeIP = time.Now()
 			}()
 		}
 		s.wg.Wait()

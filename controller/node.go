@@ -12,58 +12,71 @@ import (
 )
 
 func (n *node) changeIP() {
-	switch n.network {
-	case "tcp4":
-		// attach IP
-		log.Debugf("[%s:%d] Attach static IP", n.domain, n.port)
-		if _, err := n.svc.AttachStaticIp(&lightsail.AttachStaticIpInput{
-			InstanceName: aws.String(n.name),
-			StaticIpName: aws.String("LightsailMon"),
-		}); err != nil {
-			log.Error(err)
+	flag := false
+	for i := 0; i < 3; i++ {
+		switch n.network {
+		case "tcp4":
+			// attach IP
+			log.Debugf("[%s:%d] Attach static IP", n.domain, n.port)
+			if _, err := n.svc.AttachStaticIp(&lightsail.AttachStaticIpInput{
+				InstanceName: aws.String(n.name),
+				StaticIpName: aws.String("LightsailMon"),
+			}); err != nil {
+				log.Error(err)
+			}
+
+			// detach IP
+			log.Debugf("[%s:%d] Detach static IP", n.domain, n.port)
+			if _, err := n.svc.DetachStaticIp(&lightsail.DetachStaticIpInput{
+				StaticIpName: aws.String("LightsailMon"),
+			}); err != nil {
+				log.Error(err)
+			}
+
+			// update node IP
+			inst, err := n.svc.GetInstance(&lightsail.GetInstanceInput{InstanceName: aws.String(n.name)})
+			if err != nil {
+				log.Error(err)
+				return
+			}
+			n.ip = aws.StringValue(inst.Instance.PublicIpAddress)
+		case "tcp6":
+			// disable dualstack network
+			log.Debugf("[%s:%d] Disable dualstack network", n.domain, n.port)
+			if _, err := n.svc.SetIpAddressTypeRequest(&lightsail.SetIpAddressTypeInput{
+				IpAddressType: aws.String("ipv4"),
+				ResourceName:  aws.String(n.name),
+			}); err != nil {
+				log.Error(err)
+			}
+
+			// enable dualstack network
+			log.Debugf("[%s:%d] Enable dualstack network", n.domain, n.port)
+			if _, err := n.svc.SetIpAddressTypeRequest(&lightsail.SetIpAddressTypeInput{
+				IpAddressType: aws.String("dualstack"),
+				ResourceName:  aws.String(n.name),
+			}); err != nil {
+				log.Error(err)
+			}
+
+			// update node IP
+			inst, err := n.svc.GetInstance(&lightsail.GetInstanceInput{InstanceName: aws.String(n.name)})
+			if err != nil {
+				log.Error(err)
+				return
+			}
+			n.ip = aws.StringValue(inst.Instance.Ipv6Addresses[0])
 		}
 
-		// detach IP
-		log.Debugf("[%s:%d] Detach static IP", n.domain, n.port)
-		if _, err := n.svc.DetachStaticIp(&lightsail.DetachStaticIpInput{
-			StaticIpName: aws.String("LightsailMon"),
-		}); err != nil {
-			log.Error(err)
+		// check again connection
+		if _, err := n.checkConnection(5); err != nil {
+			log.Errorf("change IP post check: %v attempt retry.. (%d/3)", err, i+1)
+		} else {
+			flag = true
+			log.Infof("change IP post check: success")
+			break
 		}
-
-		// update node IP
-		inst, err := n.svc.GetInstance(&lightsail.GetInstanceInput{InstanceName: aws.String(n.name)})
-		if err != nil {
-			log.Error(err)
-			return
-		}
-		n.ip = aws.StringValue(inst.Instance.PublicIpAddress)
-	case "tcp6":
-		// disable dualstack network
-		log.Debugf("[%s:%d] Disable dualstack network", n.domain, n.port)
-		if _, err := n.svc.SetIpAddressTypeRequest(&lightsail.SetIpAddressTypeInput{
-			IpAddressType: aws.String("ipv4"),
-			ResourceName:  aws.String(n.name),
-		}); err != nil {
-			log.Error(err)
-		}
-
-		// enable dualstack network
-		log.Debugf("[%s:%d] Enable dualstack network", n.domain, n.port)
-		if _, err := n.svc.SetIpAddressTypeRequest(&lightsail.SetIpAddressTypeInput{
-			IpAddressType: aws.String("dualstack"),
-			ResourceName:  aws.String(n.name),
-		}); err != nil {
-			log.Error(err)
-		}
-
-		// update node IP
-		inst, err := n.svc.GetInstance(&lightsail.GetInstanceInput{InstanceName: aws.String(n.name)})
-		if err != nil {
-			log.Error(err)
-			return
-		}
-		n.ip = aws.StringValue(inst.Instance.Ipv6Addresses[0])
+		time.Sleep(5 * time.Second)
 	}
 
 	// Update domain record
@@ -72,10 +85,18 @@ func (n *node) changeIP() {
 		return
 	}
 
-	if err := n.notifier.Webhook(fmt.Sprintf("[%s] IP changed: %s", n.domain, n.ip)); err != nil {
-		log.Error(err)
+	if flag {
+		if err := n.notifier.Webhook(fmt.Sprintf("[%s] IP changed: %s", n.domain, n.ip)); err != nil {
+			log.Error(err)
+		} else {
+			log.Infof("[%s:%d] Push message success", n.domain, n.port)
+		}
 	} else {
-		log.Infof("[%s:%d] Push message success", n.domain, n.port)
+		if err := n.notifier.Webhook(fmt.Sprintf("[%s] Connection check failure after IP change 3 times", n.domain)); err != nil {
+			log.Error(err)
+		} else {
+			log.Infof("[%s:%d] Push message success", n.domain, n.port)
+		}
 	}
 }
 

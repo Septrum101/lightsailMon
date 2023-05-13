@@ -3,7 +3,6 @@ package controller
 import (
 	"sync"
 	"sync/atomic"
-	"time"
 
 	"github.com/aws/aws-sdk-go/service/lightsail"
 	"github.com/robfig/cron/v3"
@@ -25,13 +24,12 @@ type Server struct {
 }
 
 type node struct {
-	name         string
-	network      string
-	domain       string
-	ip           string
-	port         int
-	lastChangeIP time.Time
-	svc          *lightsail.Lightsail
-	ddnsClient   ddns.Client
-	notifier     notify.Notify
+	name       string
+	network    string
+	domain     string
+	ip         string
+	port       int
+	svc        *lightsail.Lightsail
+	ddnsClient ddns.Client
+	notifier   notify.Notify
 }
