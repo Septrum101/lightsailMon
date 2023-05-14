@@ -4,7 +4,7 @@ go 1.20
 
 require (
 	github.com/aws/aws-sdk-go v1.44.257
-	github.com/cloudflare/cloudflare-go v0.66.0
+	github.com/cloudflare/cloudflare-go v0.67.0
 	github.com/fsnotify/fsnotify v1.6.0
 	github.com/robfig/cron/v3 v3.0.1
 	github.com/sirupsen/logrus v1.9.0
