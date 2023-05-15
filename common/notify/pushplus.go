@@ -1,30 +1,32 @@
 package notify
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
-	"net/url"
 )
 
 type PushPlus struct {
 	Token string
 }
 
-func (p *PushPlus) Webhook(content string) error {
-	api := "http://www.pushplus.plus/send/"
-	u, _ := url.Parse(api)
-	q := u.Query()
-	q.Add("token", p.Token)
-	q.Add("content", content)
-	u.RawQuery = q.Encode()
-	resp, err := http.Get(u.String())
+func (p *PushPlus) Webhook(title string, content string) error {
+	api := "https://www.pushplus.plus/send/"
+	pl := bytes.Buffer{}
+	b, _ := json.Marshal(map[string]string{
+		"token":   p.Token,
+		"title":   title,
+		"content": content,
+	})
+	pl.Write(b)
+	resp, err := http.Post(api, "application/json", &pl)
 	if err != nil {
 		return err
 	}
 
-	b, _ := io.ReadAll(resp.Body)
+	b, _ = io.ReadAll(resp.Body)
 	defer resp.Body.Close()
 
 	var buf map[string]any

@@ -1,5 +1,5 @@
 package notify
 
 type Notify interface {
-	Webhook(content string) error
+	Webhook(title string, content string) error
 }

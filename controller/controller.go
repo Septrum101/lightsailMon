@@ -213,7 +213,7 @@ func (s *Server) handleBlockNodes() {
 
 				log.Errorf("[%s:%d] Change node IP", n.domain, n.port)
 
-				n.changeIP()
+				n.renewIP()
 			}()
 		}
 		s.wg.Wait()

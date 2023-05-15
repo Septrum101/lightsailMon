@@ -11,7 +11,7 @@ import (
 	log "github.com/sirupsen/logrus"
 )
 
-func (n *node) changeIP() {
+func (n *node) renewIP() {
 	flag := false
 	for i := 0; i < 3; i++ {
 		switch n.network {
@@ -70,33 +70,32 @@ func (n *node) changeIP() {
 
 		// check again connection
 		if _, err := n.checkConnection(5); err != nil {
-			log.Errorf("change IP post check: %v attempt retry.. (%d/3)", err, i+1)
+			log.Errorf("renew IP post check: %v attempt retry.. (%d/3)", err, i+1)
 		} else {
 			flag = true
-			log.Infof("change IP post check: success")
+			log.Infof("renew IP post check: success")
 			break
 		}
 		time.Sleep(5 * time.Second)
 	}
 
-	// Update domain record
-	if err := n.ddnsClient.AddUpdateDomainRecords(n.network, n.ip); err != nil {
-		log.Error(err)
-		return
-	}
-
 	if flag {
-		if err := n.notifier.Webhook(fmt.Sprintf("[%s] IP changed: %s", n.domain, n.ip)); err != nil {
+		if err := n.notifier.Webhook(n.domain, fmt.Sprintf("IP changed: %s", n.ip)); err != nil {
 			log.Error(err)
 		} else {
 			log.Infof("[%s:%d] Push message success", n.domain, n.port)
 		}
 	} else {
-		if err := n.notifier.Webhook(fmt.Sprintf("[%s] Connection check failure after IP change 3 times", n.domain)); err != nil {
+		if err := n.notifier.Webhook(n.domain, "Connection block after IP refresh 3 times"); err != nil {
 			log.Error(err)
 		} else {
 			log.Infof("[%s:%d] Push message success", n.domain, n.port)
 		}
+	}
+
+	// Update domain record
+	if err := n.ddnsClient.AddUpdateDomainRecords(n.network, n.ip); err != nil {
+		log.Error(err)
 	}
 }
 
@@ -117,7 +116,7 @@ func (n *node) checkConnection(t int) (int64, error) {
 		conn, err = net.DialTimeout(network, ip+":"+strconv.Itoa(port), time.Second*time.Duration(t))
 		d := time.Since(start)
 		if err != nil {
-			log.Infof("%v attempt retry.. (%d/3)", err, i+1)
+			log.Debugf("%v attempt retry.. (%d/3)", err, i+1)
 			if i == 2 {
 				return 0, err
 			}
