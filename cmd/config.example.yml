@@ -13,7 +13,10 @@ Notify:
   Provider: pushplus
   Config:
     PUSHPLUS_TOKEN: YOUR_TOKEN
-
+#  Provider: telegram
+#  Config:
+#    TELEGRAM_CHATID: 123
+#    TELEGRAM_TOKEN: YOUR_TOKEN
 Accounts:
   - AccessKeyID: YOUR_AWS_AccessKeyID
     SecretAccessKey: YOUR_AWS_SecretAccessKey

@@ -38,5 +38,5 @@ type DDNS struct {
 type Notify struct {
 	Enable   bool
 	Provider string
-	Config   map[string]string
+	Config   map[string]any
 }

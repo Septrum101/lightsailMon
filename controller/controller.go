@@ -40,7 +40,12 @@ func New(c *config.Config) *Server {
 	if c.Notify != nil && c.Notify.Enable {
 		switch c.Notify.Provider {
 		case "pushplus":
-			noti = &notify.PushPlus{Token: c.Notify.Config["pushplus_token"]}
+			noti = &notify.PushPlus{Token: c.Notify.Config["pushplus_token"].(string)}
+		case "telegram":
+			noti = &notify.Telegram{
+				ChatID: int64(c.Notify.Config["telegram_chatid"].(int)),
+				Token:  c.Notify.Config["telegram_token"].(string),
+			}
 		}
 	}
 
@@ -237,5 +242,6 @@ func (s *Server) Close() {
 		s.cron.Remove(entry[i].ID)
 	}
 	s.cron.Stop()
+	close(s.worker)
 	s.running = false
 }
