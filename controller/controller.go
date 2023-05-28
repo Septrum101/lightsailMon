@@ -83,6 +83,8 @@ func New(c *config.Config) *Server {
 					switch c.DDNS.Provider {
 					case "cloudflare":
 						ddnsCli = &ddns.Cloudflare{}
+					case "google":
+						ddnsCli = &ddns.GoogleDomain{}
 					}
 					err := ddnsCli.Init(c.DDNS.Config, n.Domain)
 					if err != nil {

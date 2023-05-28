@@ -8,6 +8,10 @@ DDNS:
   Config:
     CLOUDFLARE_EMAIL: test@test.com
     CLOUDFLARE_API_KEY: YOUR_TOKEN
+#  Provider: google
+#  Config:
+#    GOOGLEDOMAIN_USERNAME: username
+#    GOOGLEDOMAIN_PASSWORD: password
 Notify:
   Enable: false
   Provider: pushplus
