@@ -8,11 +8,24 @@ Internal: 300 # Time to check the node connection (unit: second)
 Timeout: 15 # Timeout for the tcp request (unit: second)
 Concurrent: 20 # Max concurrent on nodes check
 DDNS:
+  Enable: true
   Provider: cloudflare
-  DNSEnv:
+  Config:
     CLOUDFLARE_EMAIL: test@test.com
     CLOUDFLARE_API_KEY: YOUR_TOKEN
-
+#  Provider: google
+#  Config:
+#    GOOGLEDOMAIN_USERNAME: username
+#    GOOGLEDOMAIN_PASSWORD: password
+Notify:
+  Enable: false
+  Provider: pushplus
+  Config:
+    PUSHPLUS_TOKEN: YOUR_TOKEN
+#  Provider: telegram
+#  Config:
+#    TELEGRAM_CHATID: 123
+#    TELEGRAM_TOKEN: YOUR_TOKEN
 Accounts:
   - AccessKeyID: YOUR_AWS_AccessKeyID
     SecretAccessKey: YOUR_AWS_SecretAccessKey
