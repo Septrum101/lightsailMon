@@ -2,8 +2,10 @@ package notify
 
 import (
 	"fmt"
+	"time"
 
 	tg "github.com/go-telegram-bot-api/telegram-bot-api/v5"
+	log "github.com/sirupsen/logrus"
 )
 
 type Telegram struct {
@@ -12,6 +14,7 @@ type Telegram struct {
 }
 
 func (t *Telegram) Webhook(title string, content string) error {
+	log.SetLevel(log.DebugLevel)
 	bot, err := tg.NewBotAPI(t.Token)
 	if err != nil {
 		return err
@@ -21,8 +24,17 @@ func (t *Telegram) Webhook(title string, content string) error {
 		title,
 		content,
 	))
-	if _, err = bot.Send(msg); err != nil {
+	for i := 0; i < 3; i++ {
+		if _, err = bot.Send(msg); err == nil {
+			break
+		}
+		log.Debugf("[telegram] %v, attempt retry..(%d/3)", err, i+1)
+		time.Sleep(time.Second * 5)
+	}
+
+	if err != nil {
 		return err
 	}
+
 	return nil
 }
