@@ -2,15 +2,14 @@ package controller
 
 import (
 	"fmt"
-	"io"
 	"net"
-	"net/http"
 	"strconv"
 
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/aws/credentials"
 	"github.com/aws/aws-sdk-go/aws/session"
 	"github.com/aws/aws-sdk-go/service/lightsail"
+	"github.com/go-resty/resty/v2"
 	"github.com/robfig/cron/v3"
 	log "github.com/sirupsen/logrus"
 
@@ -32,12 +31,30 @@ func New(c *config.Config) *Server {
 		log.Panic(err)
 	} else {
 		log.SetLevel(l)
-		fmt.Printf("Log level: %s  (Concurrent: %d)\n", c.LogLevel, c.Concurrent)
+	}
+
+	// init ddns client
+	var (
+		ddnsCli    ddns.Client
+		enableDDNS bool
+	)
+	if c.DDNS != nil && c.DDNS.Enable {
+		enableDDNS = true
+		switch c.DDNS.Provider {
+		case "cloudflare":
+			ddnsCli = &ddns.Cloudflare{}
+		case "google":
+			ddnsCli = &ddns.GoogleDomain{}
+		}
 	}
 
 	// init notifier
-	var noti notify.Notify
+	var (
+		noti       notify.Notify
+		enableNoti bool
+	)
 	if c.Notify != nil && c.Notify.Enable {
+		enableNoti = true
 		switch c.Notify.Provider {
 		case "pushplus":
 			noti = &notify.PushPlus{Token: c.Notify.Config["pushplus_token"].(string)}
@@ -48,6 +65,8 @@ func New(c *config.Config) *Server {
 			}
 		}
 	}
+
+	fmt.Printf("Log level: %s  (Concurrent: %d, DDNS: %t, Notifier: %t)\n", c.LogLevel, c.Concurrent, enableDDNS, enableNoti)
 
 	for i := range c.Accounts {
 		a := c.Accounts[i]
@@ -78,23 +97,16 @@ func New(c *config.Config) *Server {
 					svc:     svc,
 				}
 				// init ddns client
-				if c.DDNS != nil && c.DDNS.Enable {
-					var ddnsCli ddns.Client
-					switch c.DDNS.Provider {
-					case "cloudflare":
-						ddnsCli = &ddns.Cloudflare{}
-					case "google":
-						ddnsCli = &ddns.GoogleDomain{}
-					}
-					err := ddnsCli.Init(c.DDNS.Config, n.Domain)
-					if err != nil {
+				if enableDDNS {
+					if err := ddnsCli.Init(c.DDNS.Config, n.Domain); err != nil {
 						log.Panicln(err)
 					}
+
 					initNode.ddnsClient = ddnsCli
 				}
 
 				// init notifier
-				if c.Notify != nil && c.Notify.Enable {
+				if enableNoti {
 					initNode.notifier = noti
 				}
 
@@ -129,16 +141,13 @@ func (s *Server) task() {
 	defer s.cronRunning.Store(false)
 
 	// check local network connection
-	resp, err := http.Get("http://www.gstatic.com/generate_204")
+	resp, err := resty.New().SetRetryCount(3).R().Get("http://www.gstatic.com/generate_204")
 	if err != nil {
 		log.Error(err)
 		return
 	}
-	if resp.StatusCode != 204 {
-		body, _ := io.ReadAll(resp.Body)
-		resp.Body.Close()
-
-		log.Error(string(body))
+	if resp.StatusCode() != 204 {
+		log.Error(resp.String())
 		return
 	}
 

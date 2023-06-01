@@ -79,23 +79,28 @@ func (n *node) renewIP() {
 		time.Sleep(5 * time.Second)
 	}
 
-	if flag {
-		if err := n.notifier.Webhook(n.domain, fmt.Sprintf("IP changed: %s", n.ip)); err != nil {
-			log.Error(err)
+	// push message
+	if n.notifier != nil {
+		if flag {
+			if err := n.notifier.Webhook(n.domain, fmt.Sprintf("IP changed: %s", n.ip)); err != nil {
+				log.Error(err)
+			} else {
+				log.Infof("[%s:%d] Push message success", n.domain, n.port)
+			}
 		} else {
-			log.Infof("[%s:%d] Push message success", n.domain, n.port)
-		}
-	} else {
-		if err := n.notifier.Webhook(n.domain, "Connection block after IP refresh 3 times"); err != nil {
-			log.Error(err)
-		} else {
-			log.Infof("[%s:%d] Push message success", n.domain, n.port)
+			if err := n.notifier.Webhook(n.domain, "Connection block after IP refresh 3 times"); err != nil {
+				log.Error(err)
+			} else {
+				log.Infof("[%s:%d] Push message success", n.domain, n.port)
+			}
 		}
 	}
 
 	// Update domain record
-	if err := n.ddnsClient.AddUpdateDomainRecords(n.network, n.ip); err != nil {
-		log.Error(err)
+	if n.ddnsClient != nil {
+		if err := n.ddnsClient.AddUpdateDomainRecords(n.network, n.ip); err != nil {
+			log.Error(err)
+		}
 	}
 }
 
