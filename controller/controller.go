@@ -66,7 +66,16 @@ func New(c *config.Config) *Server {
 		}
 	}
 
-	fmt.Printf("Log level: %s  (Concurrent: %d, DDNS: %t, Notifier: %t)\n", c.LogLevel, c.Concurrent, enableDDNS, enableNoti)
+	ddnsStatus := "off"
+	if c.DDNS.Enable {
+		ddnsStatus = c.DDNS.Provider
+	}
+	notifierStatus := "off"
+	if c.Notify.Enable {
+		notifierStatus = c.Notify.Provider
+	}
+	fmt.Printf("Log level: %s  (Concurrent: %d, DDNS: %s, Notifier: %s)\n", c.LogLevel, c.Concurrent,
+		ddnsStatus, notifierStatus)
 
 	for i := range c.Accounts {
 		a := c.Accounts[i]
