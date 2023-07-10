@@ -4,7 +4,7 @@ go 1.20
 
 require (
 	github.com/aws/aws-sdk-go v1.44.294
-	github.com/cloudflare/cloudflare-go v0.71.0
+	github.com/cloudflare/cloudflare-go v0.72.0
 	github.com/fsnotify/fsnotify v1.6.0
 	github.com/go-resty/resty/v2 v2.7.0
 	github.com/go-telegram-bot-api/telegram-bot-api/v5 v5.5.1
