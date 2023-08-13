@@ -228,9 +228,8 @@ func (s *Server) handleBlockNodes() {
 		for i := range blockNodes {
 			s.wg.Add(1)
 			s.worker <- 0
-			n := blockNodes[i]
 
-			go func() {
+			go func(n *node) {
 				defer func() {
 					<-s.worker
 					s.wg.Done()
@@ -239,7 +238,7 @@ func (s *Server) handleBlockNodes() {
 				log.Errorf("[%s:%d] Change node IP", n.domain, n.port)
 
 				n.renewIP()
-			}()
+			}(blockNodes[i])
 		}
 		s.wg.Wait()
 
