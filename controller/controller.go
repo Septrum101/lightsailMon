@@ -168,48 +168,47 @@ func (s *Server) handleBlockNodes() {
 	svcMap := make(map[*lightsail.Lightsail]uint8)
 
 	for k := range s.nodes {
-		node := s.nodes[k]
 		s.wg.Add(1)
 		s.worker <- 0
 
-		go func() {
+		go func(n *node) {
 			defer func() {
 				<-s.worker
 				s.wg.Done()
 			}()
 
-			addr := fmt.Sprint(node.domain + ":" + strconv.Itoa(node.port))
-			credValue, _ := node.svc.Config.Credentials.Get()
+			addr := fmt.Sprint(n.domain + ":" + strconv.Itoa(n.port))
+			credValue, _ := n.svc.Config.Credentials.Get()
 
 			// Get lightsail instance IP
-			if node.ip == "" {
-				inst, err := node.svc.GetInstance(&lightsail.GetInstanceInput{InstanceName: aws.String(node.name)})
+			if n.ip == "" {
+				inst, err := n.svc.GetInstance(&lightsail.GetInstanceInput{InstanceName: aws.String(n.name)})
 				if err != nil {
 					log.Error(err)
 					return
 				}
-				switch node.network {
+				switch n.network {
 				case "tcp4":
-					node.ip = aws.StringValue(inst.Instance.PublicIpAddress)
+					n.ip = aws.StringValue(inst.Instance.PublicIpAddress)
 				case "tcp6":
-					node.ip = aws.StringValue(inst.Instance.Ipv6Addresses[0])
+					n.ip = aws.StringValue(inst.Instance.Ipv6Addresses[0])
 				}
 			}
 
-			if delay, err := node.checkConnection(s.timeout); err != nil {
+			if delay, err := n.checkConnection(s.timeout); err != nil {
 				if v, ok := err.(*net.OpError); ok && v.Addr != nil {
 					s.Lock()
 					defer s.Unlock()
 					// add to blockNodes
-					blockNodes = append(blockNodes, node)
-					svcMap[node.svc] = 0
+					blockNodes = append(blockNodes, n)
+					svcMap[n.svc] = 0
 				}
 				log.Errorf("[AKID: %s] %s %v", credValue.AccessKeyID, addr, err)
 			} else {
 				log.Infof("[%s] Tcping: %d ms", addr, delay)
 			}
 
-		}()
+		}(s.nodes[k])
 	}
 	s.wg.Wait()
 
