@@ -1,4 +1,4 @@
-package ddns
+package google
 
 import (
 	"errors"
@@ -9,7 +9,7 @@ import (
 	log "github.com/sirupsen/logrus"
 )
 
-type GoogleDomain struct {
+type Google struct {
 	domain   string
 	username string
 	password string
@@ -18,20 +18,22 @@ type GoogleDomain struct {
 	client   *resty.Client
 }
 
-func (g *GoogleDomain) Init(c map[string]string, d string) error {
-	g.domain = d
-	g.username = c[strings.ToLower("GOOGLEDOMAIN_USERNAME")]
-	g.password = c[strings.ToLower("GOOGLEDOMAIN_PASSWORD")]
+func New(c map[string]string, d string) (*Google, error) {
+	g := &Google{
+		domain:   d,
+		username: c[strings.ToLower("GOOGLEDOMAIN_USERNAME")],
+		password: c[strings.ToLower("GOOGLEDOMAIN_PASSWORD")],
+	}
 
 	cli := resty.New()
 	cli.SetBasicAuth(g.username, g.password).SetBaseURL("https://domains.google.com").
 		SetQueryParam("hostname", g.domain)
 	g.client = cli
 
-	return nil
+	return g, nil
 }
 
-func (g *GoogleDomain) AddUpdateDomainRecords(network string, ipAddr string) error {
+func (g *Google) AddUpdateDomainRecords(network string, ipAddr string) error {
 	switch network {
 	case "tcp4":
 		return g.addUpdateDomainRecords("A", ipAddr)
@@ -42,7 +44,7 @@ func (g *GoogleDomain) AddUpdateDomainRecords(network string, ipAddr string) err
 	}
 }
 
-func (g *GoogleDomain) addUpdateDomainRecords(recordType string, ipAddr string) error {
+func (g *Google) addUpdateDomainRecords(recordType string, ipAddr string) error {
 	if ipAddr == "" {
 		return errors.New("IP address is nil")
 	}
@@ -70,7 +72,7 @@ func (g *GoogleDomain) addUpdateDomainRecords(recordType string, ipAddr string) 
 	return nil
 }
 
-func (g *GoogleDomain) doRequest(ipAddr string) error {
+func (g *Google) doRequest(ipAddr string) error {
 	resp, err := g.client.R().SetQueryParam("myip", ipAddr).Get("/nic/update")
 	if err != nil {
 		return err

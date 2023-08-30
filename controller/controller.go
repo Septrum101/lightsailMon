@@ -13,7 +13,8 @@ import (
 	"github.com/robfig/cron/v3"
 	log "github.com/sirupsen/logrus"
 
-	"github.com/thank243/lightsailMon/common/ddns"
+	"github.com/thank243/lightsailMon/common/ddns/cloudflare"
+	"github.com/thank243/lightsailMon/common/ddns/google"
 	"github.com/thank243/lightsailMon/common/notify"
 	"github.com/thank243/lightsailMon/config"
 )
@@ -31,21 +32,6 @@ func New(c *config.Config) *Server {
 		log.Panic(err)
 	} else {
 		log.SetLevel(l)
-	}
-
-	// init ddns client
-	var (
-		ddnsCli    ddns.Client
-		enableDDNS bool
-	)
-	if c.DDNS != nil && c.DDNS.Enable {
-		enableDDNS = true
-		switch c.DDNS.Provider {
-		case "cloudflare":
-			ddnsCli = &ddns.Cloudflare{}
-		case "google":
-			ddnsCli = &ddns.GoogleDomain{}
-		}
 	}
 
 	// init notifier
@@ -106,12 +92,17 @@ func New(c *config.Config) *Server {
 					svc:     svc,
 				}
 				// init ddns client
-				if enableDDNS {
-					if err := ddnsCli.Init(c.DDNS.Config, n.Domain); err != nil {
-						log.Panicln(err)
+				if c.DDNS != nil && c.DDNS.Enable {
+					switch c.DDNS.Provider {
+					case "cloudflare":
+						if initNode.ddnsClient, err = cloudflare.New(c.DDNS.Config, n.Domain); err != nil {
+							log.Panicln(err)
+						}
+					case "google":
+						if initNode.ddnsClient, err = google.New(c.DDNS.Config, n.Domain); err != nil {
+							log.Panicln(err)
+						}
 					}
-
-					initNode.ddnsClient = ddnsCli
 				}
 
 				// init notifier

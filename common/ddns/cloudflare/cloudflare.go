@@ -1,4 +1,4 @@
-package ddns
+package cloudflare
 
 import (
 	"errors"
@@ -17,14 +17,17 @@ type Cloudflare struct {
 	client *cloudflare.API
 }
 
-func (cf *Cloudflare) Init(c map[string]string, d string) error {
-	cf.domain = d
+func New(c map[string]string, d string) (*Cloudflare, error) {
+	cf := &Cloudflare{
+		domain: d,
+	}
+
 	client, err := cloudflare.New(c[strings.ToLower("CLOUDFLARE_API_KEY")], c[strings.ToLower("CLOUDFLARE_EMAIL")])
 	if err != nil {
-		return err
+		return nil, err
 	}
 	cf.client = client
-	return nil
+	return cf, nil
 }
 
 // AddUpdateDomainRecords create or update IPv4/IPv6 records

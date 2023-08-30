@@ -3,11 +3,12 @@ package ddns
 import (
 	"strings"
 	"testing"
+
+	"github.com/thank243/lightsailMon/common/ddns/google"
 )
 
 func TestGoogle(t *testing.T) {
-	g := &GoogleDomain{}
-	err := g.Init(map[string]string{
+	g, err := google.New(map[string]string{
 		strings.ToLower("GOOGLEDOMAIN_USERNAME"): "username",
 		strings.ToLower("GOOGLEDOMAIN_PASSWORD"): "password",
 	}, "subdomain.yourdomain.com")
