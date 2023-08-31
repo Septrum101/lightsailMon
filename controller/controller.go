@@ -17,6 +17,7 @@ import (
 	"github.com/thank243/lightsailMon/common/ddns/google"
 	"github.com/thank243/lightsailMon/common/notify"
 	"github.com/thank243/lightsailMon/config"
+	"github.com/thank243/lightsailMon/utils"
 )
 
 func New(c *config.Config) *Server {
@@ -105,6 +106,27 @@ func New(c *config.Config) *Server {
 					}
 				}
 
+				// Get lightsail instance IP
+				inst, err := initNode.svc.GetInstance(&lightsail.GetInstanceInput{InstanceName: aws.String(initNode.name)})
+				if err != nil {
+					log.Error(err)
+				} else {
+					switch initNode.network {
+					case "tcp4":
+						initNode.ip = aws.StringValue(inst.Instance.PublicIpAddress)
+						if initNode.ip != utils.GetDomainIP("tcp4", initNode.domain) {
+							log.Infof("[%s] sync node ip to domain", n.Domain)
+							initNode.ddnsClient.AddUpdateDomainRecords("tcp4", initNode.ip)
+						}
+					case "tcp6":
+						initNode.ip = aws.StringValue(inst.Instance.Ipv6Addresses[0])
+						if initNode.ip != utils.GetDomainIP("tcp6", initNode.domain) {
+							log.Infof("[%s] sync node ip to domain", n.Domain)
+							initNode.ddnsClient.AddUpdateDomainRecords("tcp6", initNode.ip)
+						}
+					}
+				}
+
 				// init notifier
 				if enableNoti {
 					initNode.notifier = noti
@@ -119,12 +141,14 @@ func New(c *config.Config) *Server {
 }
 
 func (s *Server) Start() {
-	// On init start, do once check
-	defer s.task()
 	s.running = true
 
+	// On init start, do once check
+	s.Run()
+
 	// cron check
-	if _, err := s.cron.AddFunc(fmt.Sprintf("@every %ds", s.internal), s.task); err != nil {
+	if _, err := s.cron.AddJob(fmt.Sprintf("@every %ds", s.internal),
+		cron.NewChain(cron.SkipIfStillRunning(cron.DefaultLogger)).Then(s)); err != nil {
 		log.Panic(err)
 	}
 
@@ -132,14 +156,7 @@ func (s *Server) Start() {
 	log.Warnln(config.AppName, "Started")
 }
 
-func (s *Server) task() {
-	if s.cronRunning.Load() {
-		return
-	}
-
-	s.cronRunning.Store(true)
-	defer s.cronRunning.Store(false)
-
+func (s *Server) Run() {
 	// check local network connection
 	resp, err := resty.New().SetRetryCount(3).R().Get("http://www.gstatic.com/generate_204")
 	if err != nil {
@@ -170,21 +187,6 @@ func (s *Server) handleBlockNodes() {
 
 			addr := fmt.Sprint(n.domain + ":" + strconv.Itoa(n.port))
 			credValue, _ := n.svc.Config.Credentials.Get()
-
-			// Get lightsail instance IP
-			if n.ip == "" {
-				inst, err := n.svc.GetInstance(&lightsail.GetInstanceInput{InstanceName: aws.String(n.name)})
-				if err != nil {
-					log.Error(err)
-					return
-				}
-				switch n.network {
-				case "tcp4":
-					n.ip = aws.StringValue(inst.Instance.PublicIpAddress)
-				case "tcp6":
-					n.ip = aws.StringValue(inst.Instance.Ipv6Addresses[0])
-				}
-			}
 
 			if delay, err := n.checkConnection(s.timeout); err != nil {
 				if v, ok := err.(*net.OpError); ok && v.Addr != nil {
