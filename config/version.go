@@ -5,7 +5,7 @@ import (
 )
 
 var (
-	Version = "0.2.3"
+	Version = "0.2.4"
 	AppName = "LightsailMon"
 	Intro   = "An AWS Lightsail monitor service that can auto change blocked IP."
 )

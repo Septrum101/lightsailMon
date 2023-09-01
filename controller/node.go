@@ -7,9 +7,90 @@ import (
 	"time"
 
 	"github.com/aws/aws-sdk-go/aws"
+	"github.com/aws/aws-sdk-go/aws/credentials"
+	"github.com/aws/aws-sdk-go/aws/session"
 	"github.com/aws/aws-sdk-go/service/lightsail"
 	log "github.com/sirupsen/logrus"
+
+	"github.com/thank243/lightsailMon/common/ddns/cloudflare"
+	"github.com/thank243/lightsailMon/common/ddns/google"
+	"github.com/thank243/lightsailMon/common/notify"
+	"github.com/thank243/lightsailMon/config"
+	"github.com/thank243/lightsailMon/utils"
 )
+
+func buildNodes(c *config.Config) (nodes []*node) {
+	for i := range c.Nodes {
+		n := c.Nodes[i]
+		// create account session
+		sess, err := session.NewSession(&aws.Config{
+			Credentials: credentials.NewStaticCredentials(
+				n.AccessKeyID,
+				n.SecretAccessKey,
+				"",
+			),
+		})
+		if err != nil {
+			log.Panic(err)
+		}
+
+		// init node
+		newNode := &node{
+			name:    n.InstanceName,
+			network: n.Network,
+			domain:  n.Domain,
+			port:    n.Port,
+			svc:     lightsail.New(sess, aws.NewConfig().WithRegion(n.Region)),
+		}
+
+		// init ddns client
+		if c.DDNS != nil && c.DDNS.Enable {
+			switch c.DDNS.Provider {
+			case "cloudflare":
+				if newNode.ddnsClient, err = cloudflare.New(c.DDNS.Config, n.Domain); err != nil {
+					log.Panicln(err)
+				}
+			case "google":
+				if newNode.ddnsClient, err = google.New(c.DDNS.Config, n.Domain); err != nil {
+					log.Panicln(err)
+				}
+			}
+		}
+
+		// Get lightsail instance IP and sync to domain
+		inst, err := newNode.svc.GetInstance(&lightsail.GetInstanceInput{InstanceName: aws.String(newNode.name)})
+		if err != nil {
+			log.Error(err)
+		} else {
+			switch newNode.network {
+			case "tcp4":
+				newNode.ip = aws.StringValue(inst.Instance.PublicIpAddress)
+			case "tcp6":
+				newNode.ip = aws.StringValue(inst.Instance.Ipv6Addresses[0])
+			}
+			if newNode.ip != utils.GetDomainIP(newNode.network, newNode.domain) {
+				log.Infof("[%s] sync node ip to domain", n.Domain)
+				log.Error(newNode.ddnsClient.AddUpdateDomainRecords(newNode.network, newNode.ip))
+			}
+		}
+
+		// init notifier
+		if c.Notify != nil && c.Notify.Enable {
+			switch c.Notify.Provider {
+			case "pushplus":
+				newNode.notifier = &notify.PushPlus{Token: c.Notify.Config["pushplus_token"].(string)}
+			case "telegram":
+				newNode.notifier = &notify.Telegram{
+					ChatID: int64(c.Notify.Config["telegram_chatid"].(int)),
+					Token:  c.Notify.Config["telegram_token"].(string),
+				}
+			}
+		}
+		nodes = append(nodes, newNode)
+	}
+
+	return nodes
+}
 
 func (n *node) renewIP() {
 	isDone := false

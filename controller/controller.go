@@ -7,18 +7,12 @@ import (
 	"strings"
 
 	"github.com/aws/aws-sdk-go/aws"
-	"github.com/aws/aws-sdk-go/aws/credentials"
-	"github.com/aws/aws-sdk-go/aws/session"
 	"github.com/aws/aws-sdk-go/service/lightsail"
 	"github.com/go-resty/resty/v2"
 	"github.com/robfig/cron/v3"
 	log "github.com/sirupsen/logrus"
 
-	"github.com/thank243/lightsailMon/common/ddns/cloudflare"
-	"github.com/thank243/lightsailMon/common/ddns/google"
-	"github.com/thank243/lightsailMon/common/notify"
 	"github.com/thank243/lightsailMon/config"
-	"github.com/thank243/lightsailMon/utils"
 )
 
 func New(c *config.Config) *Server {
@@ -36,24 +30,6 @@ func New(c *config.Config) *Server {
 		log.SetLevel(l)
 	}
 
-	// init notifier
-	var (
-		noti       notify.Notify
-		enableNoti bool
-	)
-	if c.Notify != nil && c.Notify.Enable {
-		enableNoti = true
-		switch c.Notify.Provider {
-		case "pushplus":
-			noti = &notify.PushPlus{Token: c.Notify.Config["pushplus_token"].(string)}
-		case "telegram":
-			noti = &notify.Telegram{
-				ChatID: int64(c.Notify.Config["telegram_chatid"].(int)),
-				Token:  c.Notify.Config["telegram_token"].(string),
-			}
-		}
-	}
-
 	ddnsStatus := "off"
 	if c.DDNS.Enable {
 		ddnsStatus = strings.Title(c.DDNS.Provider)
@@ -65,71 +41,7 @@ func New(c *config.Config) *Server {
 	fmt.Printf("Log level: %s  (Concurrent: %d, DDNS: %s, Notifier: %s)\n", c.LogLevel, c.Concurrent,
 		ddnsStatus, notifierStatus)
 
-	for i := range c.Nodes {
-		n := c.Nodes[i]
-		// create account session
-		sess, err := session.NewSession(&aws.Config{
-			Credentials: credentials.NewStaticCredentials(
-				n.AccessKeyID,
-				n.SecretAccessKey,
-				"",
-			),
-		})
-		if err != nil {
-			log.Panic(err)
-		}
-
-		// init node
-		initNode := &node{
-			name:    n.InstanceName,
-			network: n.Network,
-			domain:  n.Domain,
-			port:    n.Port,
-			svc:     lightsail.New(sess, aws.NewConfig().WithRegion(n.Region)),
-		}
-
-		// init ddns client
-		if c.DDNS != nil && c.DDNS.Enable {
-			switch c.DDNS.Provider {
-			case "cloudflare":
-				if initNode.ddnsClient, err = cloudflare.New(c.DDNS.Config, n.Domain); err != nil {
-					log.Panicln(err)
-				}
-			case "google":
-				if initNode.ddnsClient, err = google.New(c.DDNS.Config, n.Domain); err != nil {
-					log.Panicln(err)
-				}
-			}
-		}
-
-		// Get lightsail instance IP
-		inst, err := initNode.svc.GetInstance(&lightsail.GetInstanceInput{InstanceName: aws.String(initNode.name)})
-		if err != nil {
-			log.Error(err)
-		} else {
-			switch initNode.network {
-			case "tcp4":
-				initNode.ip = aws.StringValue(inst.Instance.PublicIpAddress)
-				if initNode.ip != utils.GetDomainIP("tcp4", initNode.domain) {
-					log.Infof("[%s] sync node ip to domain", n.Domain)
-					initNode.ddnsClient.AddUpdateDomainRecords("tcp4", initNode.ip)
-				}
-			case "tcp6":
-				initNode.ip = aws.StringValue(inst.Instance.Ipv6Addresses[0])
-				if initNode.ip != utils.GetDomainIP("tcp6", initNode.domain) {
-					log.Infof("[%s] sync node ip to domain", n.Domain)
-					initNode.ddnsClient.AddUpdateDomainRecords("tcp6", initNode.ip)
-				}
-			}
-		}
-
-		// init notifier
-		if enableNoti {
-			initNode.notifier = noti
-		}
-
-		s.nodes = append(s.nodes, initNode)
-	}
+	s.nodes = buildNodes(c)
 
 	return s
 }
@@ -138,6 +50,7 @@ func (s *Server) Start() {
 	s.running = true
 
 	// On init start, do once check
+	log.Info("Initial connection test..")
 	s.Run()
 
 	// cron check
