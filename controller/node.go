@@ -12,7 +12,7 @@ import (
 )
 
 func (n *node) renewIP() {
-	flag := false
+	isDone := false
 	for i := 0; i < 3; i++ {
 		switch n.network {
 		case "tcp4":
@@ -37,12 +37,12 @@ func (n *node) renewIP() {
 			inst, err := n.svc.GetInstance(&lightsail.GetInstanceInput{InstanceName: aws.String(n.name)})
 			if err != nil {
 				log.Error(err)
-				return
+				continue
 			}
 			n.ip = aws.StringValue(inst.Instance.PublicIpAddress)
 		case "tcp6":
-			// disable dualstack network
-			log.Debugf("[%s:%d] Disable dualstack network", n.domain, n.port)
+			// disable dual-stack network
+			log.Debugf("[%s:%d] Disable dual-stack network", n.domain, n.port)
 			if _, err := n.svc.SetIpAddressTypeRequest(&lightsail.SetIpAddressTypeInput{
 				IpAddressType: aws.String("ipv4"),
 				ResourceName:  aws.String(n.name),
@@ -50,8 +50,8 @@ func (n *node) renewIP() {
 				log.Error(err)
 			}
 
-			// enable dualstack network
-			log.Debugf("[%s:%d] Enable dualstack network", n.domain, n.port)
+			// enable dual-stack network
+			log.Debugf("[%s:%d] Enable dual-stack network", n.domain, n.port)
 			if _, err := n.svc.SetIpAddressTypeRequest(&lightsail.SetIpAddressTypeInput{
 				IpAddressType: aws.String("dualstack"),
 				ResourceName:  aws.String(n.name),
@@ -63,7 +63,7 @@ func (n *node) renewIP() {
 			inst, err := n.svc.GetInstance(&lightsail.GetInstanceInput{InstanceName: aws.String(n.name)})
 			if err != nil {
 				log.Error(err)
-				return
+				continue
 			}
 			n.ip = aws.StringValue(inst.Instance.Ipv6Addresses[0])
 		}
@@ -72,16 +72,15 @@ func (n *node) renewIP() {
 		if _, err := n.checkConnection(5); err != nil {
 			log.Errorf("renew IP post check: %v attempt retry.. (%d/3)", err, i+1)
 		} else {
-			flag = true
+			isDone = true
 			log.Infof("renew IP post check: success")
 			break
 		}
-		time.Sleep(5 * time.Second)
 	}
 
 	// push message
 	if n.notifier != nil {
-		if flag {
+		if isDone {
 			if err := n.notifier.Webhook(n.domain, fmt.Sprintf("IP changed: %s", n.ip)); err != nil {
 				log.Error(err)
 			} else {
@@ -106,29 +105,28 @@ func (n *node) renewIP() {
 
 func (n *node) checkConnection(t int) (int64, error) {
 	var (
-		conn    net.Conn
-		err     error
-		ip      = n.ip
-		port    = n.port
-		network = n.network
+		conn net.Conn
+		err  error
 	)
 
-	for i := 0; ; i++ {
-		if network == "tcp6" {
-			ip = "[" + ip + "]"
+	if n.network == "tcp6" {
+		n.ip = "[" + n.ip + "]"
+	}
+
+	for i := 0; i < 3; i++ {
+		if i > 0 {
+			time.Sleep(time.Second * 5)
 		}
+
 		start := time.Now()
-		conn, err = net.DialTimeout(network, ip+":"+strconv.Itoa(port), time.Second*time.Duration(t))
-		d := time.Since(start)
+		conn, err = net.DialTimeout(n.network, n.ip+":"+strconv.Itoa(n.port), time.Second*time.Duration(t))
 		if err != nil {
 			log.Debugf("%v attempt retry.. (%d/3)", err, i+1)
-			if i == 2 {
-				return 0, err
-			}
-			time.Sleep(time.Second * 5)
 		} else {
 			conn.Close()
-			return d.Milliseconds(), nil
+			return time.Since(start).Milliseconds(), nil
 		}
 	}
+
+	return 0, err
 }

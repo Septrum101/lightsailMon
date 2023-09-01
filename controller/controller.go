@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"net"
 	"strconv"
+	"strings"
 
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/aws/credentials"
@@ -55,22 +56,22 @@ func New(c *config.Config) *Server {
 
 	ddnsStatus := "off"
 	if c.DDNS.Enable {
-		ddnsStatus = c.DDNS.Provider
+		ddnsStatus = strings.Title(c.DDNS.Provider)
 	}
 	notifierStatus := "off"
 	if c.Notify.Enable {
-		notifierStatus = c.Notify.Provider
+		notifierStatus = strings.Title(c.Notify.Provider)
 	}
 	fmt.Printf("Log level: %s  (Concurrent: %d, DDNS: %s, Notifier: %s)\n", c.LogLevel, c.Concurrent,
 		ddnsStatus, notifierStatus)
 
-	for i := range c.Accounts {
-		a := c.Accounts[i]
+	for i := range c.Nodes {
+		n := c.Nodes[i]
 		// create account session
 		sess, err := session.NewSession(&aws.Config{
 			Credentials: credentials.NewStaticCredentials(
-				a.AccessKeyID,
-				a.SecretAccessKey,
+				n.AccessKeyID,
+				n.SecretAccessKey,
 				"",
 			),
 		})
@@ -78,63 +79,56 @@ func New(c *config.Config) *Server {
 			log.Panic(err)
 		}
 
-		for ii := range a.Regions {
-			r := a.Regions[ii]
-			// init region svc
-			svc := lightsail.New(sess, aws.NewConfig().WithRegion(r.Name))
+		// init node
+		initNode := &node{
+			name:    n.InstanceName,
+			network: n.Network,
+			domain:  n.Domain,
+			port:    n.Port,
+			svc:     lightsail.New(sess, aws.NewConfig().WithRegion(n.Region)),
+		}
 
-			for iii := range r.Nodes {
-				n := r.Nodes[iii]
-				initNode := &node{
-					name:    n.InstanceName,
-					network: n.Network,
-					domain:  n.Domain,
-					port:    n.Port,
-					svc:     svc,
+		// init ddns client
+		if c.DDNS != nil && c.DDNS.Enable {
+			switch c.DDNS.Provider {
+			case "cloudflare":
+				if initNode.ddnsClient, err = cloudflare.New(c.DDNS.Config, n.Domain); err != nil {
+					log.Panicln(err)
 				}
-				// init ddns client
-				if c.DDNS != nil && c.DDNS.Enable {
-					switch c.DDNS.Provider {
-					case "cloudflare":
-						if initNode.ddnsClient, err = cloudflare.New(c.DDNS.Config, n.Domain); err != nil {
-							log.Panicln(err)
-						}
-					case "google":
-						if initNode.ddnsClient, err = google.New(c.DDNS.Config, n.Domain); err != nil {
-							log.Panicln(err)
-						}
-					}
+			case "google":
+				if initNode.ddnsClient, err = google.New(c.DDNS.Config, n.Domain); err != nil {
+					log.Panicln(err)
 				}
-
-				// Get lightsail instance IP
-				inst, err := initNode.svc.GetInstance(&lightsail.GetInstanceInput{InstanceName: aws.String(initNode.name)})
-				if err != nil {
-					log.Error(err)
-				} else {
-					switch initNode.network {
-					case "tcp4":
-						initNode.ip = aws.StringValue(inst.Instance.PublicIpAddress)
-						if initNode.ip != utils.GetDomainIP("tcp4", initNode.domain) {
-							log.Infof("[%s] sync node ip to domain", n.Domain)
-							initNode.ddnsClient.AddUpdateDomainRecords("tcp4", initNode.ip)
-						}
-					case "tcp6":
-						initNode.ip = aws.StringValue(inst.Instance.Ipv6Addresses[0])
-						if initNode.ip != utils.GetDomainIP("tcp6", initNode.domain) {
-							log.Infof("[%s] sync node ip to domain", n.Domain)
-							initNode.ddnsClient.AddUpdateDomainRecords("tcp6", initNode.ip)
-						}
-					}
-				}
-
-				// init notifier
-				if enableNoti {
-					initNode.notifier = noti
-				}
-
-				s.nodes = append(s.nodes, initNode)
 			}
 		}
+
+		// Get lightsail instance IP
+		inst, err := initNode.svc.GetInstance(&lightsail.GetInstanceInput{InstanceName: aws.String(initNode.name)})
+		if err != nil {
+			log.Error(err)
+		} else {
+			switch initNode.network {
+			case "tcp4":
+				initNode.ip = aws.StringValue(inst.Instance.PublicIpAddress)
+				if initNode.ip != utils.GetDomainIP("tcp4", initNode.domain) {
+					log.Infof("[%s] sync node ip to domain", n.Domain)
+					initNode.ddnsClient.AddUpdateDomainRecords("tcp4", initNode.ip)
+				}
+			case "tcp6":
+				initNode.ip = aws.StringValue(inst.Instance.Ipv6Addresses[0])
+				if initNode.ip != utils.GetDomainIP("tcp6", initNode.domain) {
+					log.Infof("[%s] sync node ip to domain", n.Domain)
+					initNode.ddnsClient.AddUpdateDomainRecords("tcp6", initNode.ip)
+				}
+			}
+		}
+
+		// init notifier
+		if enableNoti {
+			initNode.notifier = noti
+		}
+
+		s.nodes = append(s.nodes, initNode)
 	}
 
 	return s

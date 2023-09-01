@@ -1,32 +1,24 @@
 package config
 
 type Config struct {
-	LogLevel   string     `yaml:"LogLevel"`
-	Internal   int        `yaml:"Internal"`
-	Timeout    int        `yaml:"Timeout"`
-	Nameserver string     `yaml:"Nameserver"`
-	Concurrent int        `yaml:"Concurrent"`
-	DDNS       *DDNS      `yaml:"DDNS"`
-	Notify     *Notify    `yaml:"Notify"`
-	Accounts   []*Account `yaml:"Accounts"`
-}
-
-type Account struct {
-	AccessKeyID     string    `yaml:"AccessKeyID"`
-	SecretAccessKey string    `yaml:"SecretAccessKey"`
-	Regions         []*Region `yaml:"Regions"`
-}
-
-type Region struct {
-	Name  string  `yaml:"Name"`
-	Nodes []*Node `yaml:"Nodes"`
+	LogLevel   string
+	Internal   int
+	Timeout    int
+	Nameserver string
+	Concurrent int
+	DDNS       *DDNS
+	Notify     *Notify
+	Nodes      []*Node
 }
 
 type Node struct {
-	InstanceName string `yaml:"InstanceName"`
-	Network      string `yaml:"Network"`
-	Domain       string `yaml:"Domain"`
-	Port         int    `yaml:"Port"`
+	AccessKeyID     string
+	SecretAccessKey string
+	Region          string
+	InstanceName    string
+	Network         string
+	Domain          string
+	Port            int
 }
 
 type DDNS struct {
