@@ -3,7 +3,7 @@ module github.com/thank243/lightsailMon
 go 1.20
 
 require (
-	github.com/aws/aws-sdk-go v1.45.15
+	github.com/aws/aws-sdk-go v1.45.19
 	github.com/cloudflare/cloudflare-go v0.77.0
 	github.com/fsnotify/fsnotify v1.6.0
 	github.com/go-resty/resty/v2 v2.9.1
