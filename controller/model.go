@@ -11,7 +11,7 @@ import (
 	"github.com/thank243/lightsailMon/common/notify"
 )
 
-type Server struct {
+type Service struct {
 	sync.RWMutex
 	running  bool
 	internal int

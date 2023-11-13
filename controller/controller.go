@@ -13,8 +13,8 @@ import (
 	"github.com/thank243/lightsailMon/config"
 )
 
-func New(c *config.Config) *Server {
-	s := &Server{
+func New(c *config.Config) *Service {
+	s := &Service{
 		cron:     cron.New(),
 		internal: c.Internal,
 		timeout:  c.Timeout,
@@ -44,7 +44,7 @@ func New(c *config.Config) *Server {
 	return s
 }
 
-func (s *Server) Start() {
+func (s *Service) Start() {
 	s.running = true
 
 	// On init start, do once check
@@ -61,7 +61,7 @@ func (s *Server) Start() {
 	log.Warnln(config.AppName, "Started")
 }
 
-func (s *Server) Run() {
+func (s *Service) Run() {
 	// check local network connection
 	resp, err := resty.New().SetRetryCount(3).R().Get("http://www.gstatic.com/generate_204")
 	if err != nil {
@@ -76,7 +76,7 @@ func (s *Server) Run() {
 	s.handler()
 }
 
-func (s *Server) handler() {
+func (s *Service) handler() {
 	var blockNodes []*node
 	svcMap := make(map[*lightsail.Lightsail]uint8)
 
@@ -90,9 +90,9 @@ func (s *Server) handler() {
 				s.wg.Done()
 			}()
 
-			n.updateDomainIp()
+			go n.UpdateDomainIp()
 
-			if n.isBlock() {
+			if n.IsBlock() {
 				s.Lock()
 				defer s.Unlock()
 
@@ -156,7 +156,7 @@ func (s *Server) handler() {
 	}
 }
 
-func (s *Server) Close() {
+func (s *Service) Close() {
 	log.Infoln(config.AppName, "Closing..")
 	entry := s.cron.Entries()
 	for i := range entry {

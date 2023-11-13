@@ -223,7 +223,7 @@ func (n *node) checkConnection() (int64, error) {
 	return 0, err
 }
 
-func (n *node) updateDomainIp() {
+func (n *node) UpdateDomainIp() {
 	// check domain sync with ip
 	if n.ddnsClient != nil {
 		var (
@@ -238,17 +238,18 @@ func (n *node) updateDomainIp() {
 		}
 		if err != nil {
 			log.Error(err)
-		} else {
-			if _, ok := domainIps[n.ip]; !ok {
-				if err := n.ddnsClient.AddUpdateDomainRecords(n.network, n.ip); err != nil {
-					log.Error(err)
-				}
+			return
+		}
+
+		if _, ok := domainIps[n.ip]; !ok {
+			if err := n.ddnsClient.AddUpdateDomainRecords(n.network, n.ip); err != nil {
+				log.Error(err)
 			}
 		}
 	}
 }
 
-func (n *node) isBlock() bool {
+func (n *node) IsBlock() bool {
 	addr := fmt.Sprint(n.domain + ":" + strconv.Itoa(n.port))
 	credValue, _ := n.svc.Config.Credentials.Get()
 
