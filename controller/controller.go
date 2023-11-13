@@ -2,8 +2,6 @@ package controller
 
 import (
 	"fmt"
-	"net"
-	"strconv"
 	"strings"
 
 	"github.com/aws/aws-sdk-go/aws"
@@ -92,46 +90,16 @@ func (s *Server) handler() {
 				s.wg.Done()
 			}()
 
-			// check domain sync with ip
-			if n.ddnsClient != nil {
-				var (
-					domainIps map[string]bool
-					err       error
-				)
-				switch n.network {
-				case "tcp4":
-					domainIps, err = n.ddnsClient.GetDomainRecords("A")
-				case "tcp6":
-					domainIps, err = n.ddnsClient.GetDomainRecords("AAAA")
-				}
-				if err != nil {
-					log.Error(err)
-				} else {
-					if _, ok := domainIps[n.ip]; !ok {
-						if err := n.ddnsClient.AddUpdateDomainRecords(n.network, n.ip); err != nil {
-							log.Error(err)
-						}
-					}
-				}
+			n.updateDomainIp()
+
+			if n.isBlock() {
+				s.Lock()
+				defer s.Unlock()
+
+				// add to blockNodes
+				blockNodes = append(blockNodes, n)
+				svcMap[n.svc] = 0
 			}
-
-			// check connection
-			addr := fmt.Sprint(n.domain + ":" + strconv.Itoa(n.port))
-			credValue, _ := n.svc.Config.Credentials.Get()
-
-			if delay, err := n.checkConnection(s.timeout); err != nil {
-				if v, ok := err.(*net.OpError); ok && v.Addr != nil {
-					s.Lock()
-					defer s.Unlock()
-					// add to blockNodes
-					blockNodes = append(blockNodes, n)
-					svcMap[n.svc] = 0
-				}
-				log.Errorf("[AKID: %s] %s %v", credValue.AccessKeyID, addr, err)
-			} else {
-				log.Infof("[%s] Tcping: %d ms", addr, delay)
-			}
-
 		}(s.nodes[k])
 	}
 	s.wg.Wait()
@@ -171,7 +139,6 @@ func (s *Server) handler() {
 				}()
 
 				log.Errorf("[%s:%d] Change node IP", n.domain, n.port)
-
 				n.renewIP()
 			}(blockNodes[i])
 		}

@@ -2,6 +2,7 @@ package controller
 
 import (
 	"sync"
+	"time"
 
 	"github.com/aws/aws-sdk-go/service/lightsail"
 	"github.com/robfig/cron/v3"
@@ -30,4 +31,5 @@ type node struct {
 	svc        *lightsail.Lightsail
 	ddnsClient ddns.Client
 	notifier   notify.Notify
+	timeout    time.Duration
 }

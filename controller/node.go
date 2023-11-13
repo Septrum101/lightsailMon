@@ -1,6 +1,7 @@
 package controller
 
 import (
+	"errors"
 	"fmt"
 	"net"
 	"strconv"
@@ -41,6 +42,7 @@ func buildNodes(c *config.Config) (nodes []*node) {
 			domain:  n.Domain,
 			port:    n.Port,
 			svc:     lightsail.New(sess, aws.NewConfig().WithRegion(n.Region)),
+			timeout: time.Second * time.Duration(c.Timeout),
 		}
 
 		// init ddns client
@@ -70,7 +72,10 @@ func buildNodes(c *config.Config) (nodes []*node) {
 			}
 			if newNode.ip != utils.GetDomainIP(newNode.network, newNode.domain) {
 				log.Infof("[%s] sync node ip to domain", n.Domain)
-				log.Error(newNode.ddnsClient.AddUpdateDomainRecords(newNode.network, newNode.ip))
+				err := newNode.ddnsClient.AddUpdateDomainRecords(newNode.network, newNode.ip)
+				if err != nil {
+					log.Error(err)
+				}
 			}
 		}
 
@@ -154,7 +159,7 @@ func (n *node) renewIP() {
 		}
 
 		// check again connection
-		if _, err := n.checkConnection(5); err != nil {
+		if _, err := n.checkConnection(); err != nil {
 			log.Errorf("renew IP post check: %v attempt retry.. (%d/3)", err, i+1)
 		} else {
 			isDone = true
@@ -193,7 +198,7 @@ func (n *node) renewIP() {
 	}
 }
 
-func (n *node) checkConnection(t int) (int64, error) {
+func (n *node) checkConnection() (int64, error) {
 	var (
 		conn net.Conn
 		err  error
@@ -204,19 +209,57 @@ func (n *node) checkConnection(t int) (int64, error) {
 	}
 
 	for i := 0; i < 3; i++ {
-		if i > 0 {
-			time.Sleep(time.Second * 5)
-		}
-
 		start := time.Now()
-		conn, err = net.DialTimeout(n.network, n.ip+":"+strconv.Itoa(n.port), time.Second*time.Duration(t))
+		conn, err = net.DialTimeout(n.network, n.ip+":"+strconv.Itoa(n.port), n.timeout)
 		if err != nil {
 			log.Debugf("%v attempt retry.. (%d/3)", err, i+1)
 		} else {
 			conn.Close()
 			return time.Since(start).Milliseconds(), nil
 		}
+		time.Sleep(time.Second * 5)
 	}
 
 	return 0, err
+}
+
+func (n *node) updateDomainIp() {
+	// check domain sync with ip
+	if n.ddnsClient != nil {
+		var (
+			domainIps map[string]bool
+			err       error
+		)
+		switch n.network {
+		case "tcp4":
+			domainIps, err = n.ddnsClient.GetDomainRecords("A")
+		case "tcp6":
+			domainIps, err = n.ddnsClient.GetDomainRecords("AAAA")
+		}
+		if err != nil {
+			log.Error(err)
+		} else {
+			if _, ok := domainIps[n.ip]; !ok {
+				if err := n.ddnsClient.AddUpdateDomainRecords(n.network, n.ip); err != nil {
+					log.Error(err)
+				}
+			}
+		}
+	}
+}
+
+func (n *node) isBlock() bool {
+	addr := fmt.Sprint(n.domain + ":" + strconv.Itoa(n.port))
+	credValue, _ := n.svc.Config.Credentials.Get()
+
+	if delay, err := n.checkConnection(); err != nil {
+		var v *net.OpError
+		if errors.As(err, &v) && v.Addr != nil {
+			log.Errorf("[AKID: %s] %s %v", credValue.AccessKeyID, addr, err)
+			return true
+		}
+	} else {
+		log.Infof("[%s] Tcping: %d ms", addr, delay)
+	}
+	return false
 }
