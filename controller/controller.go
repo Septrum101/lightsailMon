@@ -75,10 +75,10 @@ func (s *Server) Run() {
 		return
 	}
 
-	s.handleBlockNodes()
+	s.handler()
 }
 
-func (s *Server) handleBlockNodes() {
+func (s *Server) handler() {
 	var blockNodes []*node
 	svcMap := make(map[*lightsail.Lightsail]uint8)
 
@@ -92,6 +92,30 @@ func (s *Server) handleBlockNodes() {
 				s.wg.Done()
 			}()
 
+			// check domain sync with ip
+			if n.ddnsClient != nil {
+				var (
+					domainIps map[string]bool
+					err       error
+				)
+				switch n.network {
+				case "tcp4":
+					domainIps, err = n.ddnsClient.GetDomainRecords("A")
+				case "tcp6":
+					domainIps, err = n.ddnsClient.GetDomainRecords("AAAA")
+				}
+				if err != nil {
+					log.Error(err)
+				} else {
+					if _, ok := domainIps[n.ip]; !ok {
+						if err := n.ddnsClient.AddUpdateDomainRecords(n.network, n.ip); err != nil {
+							log.Error(err)
+						}
+					}
+				}
+			}
+
+			// check connection
 			addr := fmt.Sprint(n.domain + ":" + strconv.Itoa(n.port))
 			credValue, _ := n.svc.Config.Credentials.Get()
 
@@ -113,8 +137,20 @@ func (s *Server) handleBlockNodes() {
 	s.wg.Wait()
 
 	if len(blockNodes) > 0 {
-		// Allocate Static Ip
+		// Release and Allocate Static Ip
 		for svc := range svcMap {
+			log.Debugf("[Region: %s] Release region static IP", *svc.Config.Region)
+			if ips, err := svc.GetStaticIps(&lightsail.GetStaticIpsInput{}); err != nil {
+				log.Error(err)
+			} else {
+				for i := range ips.StaticIps {
+					ip := ips.StaticIps[i]
+					if _, err := svc.ReleaseStaticIp(&lightsail.ReleaseStaticIpInput{StaticIpName: ip.Name}); err != nil {
+						log.Error(err)
+					}
+				}
+			}
+
 			log.Debugf("[Region: %s] Allocate region static IP", *svc.Config.Region)
 			if _, err := svc.AllocateStaticIp(&lightsail.AllocateStaticIpInput{
 				StaticIpName: aws.String("LightsailMon"),

@@ -106,6 +106,8 @@ func (n *node) renewIP() {
 				log.Error(err)
 			}
 
+			time.Sleep(time.Second * 5)
+
 			// detach IP
 			log.Debugf("[%s:%d] Detach static IP", n.domain, n.port)
 			if _, err := n.svc.DetachStaticIp(&lightsail.DetachStaticIpInput{
@@ -130,6 +132,8 @@ func (n *node) renewIP() {
 			}); err != nil {
 				log.Error(err)
 			}
+
+			time.Sleep(time.Second * 5)
 
 			// enable dual-stack network
 			log.Debugf("[%s:%d] Enable dual-stack network", n.domain, n.port)
@@ -178,8 +182,13 @@ func (n *node) renewIP() {
 
 	// Update domain record
 	if n.ddnsClient != nil {
-		if err := n.ddnsClient.AddUpdateDomainRecords(n.network, n.ip); err != nil {
-			log.Error(err)
+		for i := 0; i < 3; i++ {
+			if err := n.ddnsClient.AddUpdateDomainRecords(n.network, n.ip); err != nil {
+				log.Error(err)
+				time.Sleep(time.Second * 5)
+			} else {
+				break
+			}
 		}
 	}
 }

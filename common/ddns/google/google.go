@@ -85,3 +85,15 @@ func (g *Google) doRequest(ipAddr string) error {
 	}
 	return nil
 }
+
+func (g *Google) GetDomainRecords(recordType string) (domains map[string]bool, err error) {
+	domains = make(map[string]bool)
+	switch recordType {
+	case "A":
+		domains[g.lastIpv4] = true
+	case "AAAA":
+		domains[g.lastIpv6] = true
+	}
+
+	return nil, errors.New("no record")
+}

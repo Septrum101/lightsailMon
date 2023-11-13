@@ -50,29 +50,11 @@ func (cf *Cloudflare) addUpdateDomainRecords(recordType string, ipAddr string) e
 		return errors.New("IP address is nil")
 	}
 
-	zones, err := cf.client.ListZones(ctx)
+	zoneID, records, err := cf.getRecords(ctx, recordType)
 	if err != nil {
 		return err
 	}
 
-	// Get zone
-	zoneID := ""
-	for i := range zones {
-		if strings.Contains(cf.domain, zones[i].Name) {
-			zoneID = zones[i].ID
-		}
-	}
-	if zoneID == "" {
-		return errors.New("cannot find a valid zone")
-	}
-
-	records, _, err := cf.client.ListDNSRecords(ctx, cloudflare.ZoneIdentifier(zoneID), cloudflare.ListDNSRecordsParams{
-		Type: recordType,
-		Name: cf.domain,
-	})
-	if err != nil {
-		return err
-	}
 	if len(records) > 0 {
 		for i := range records {
 			if records[i].Content == ipAddr {
@@ -100,4 +82,46 @@ func (cf *Cloudflare) addUpdateDomainRecords(recordType string, ipAddr string) e
 		log.Printf("[%s] create record success, IP: %s", cf.domain, ipAddr)
 	}
 	return nil
+}
+
+func (cf *Cloudflare) getRecords(ctx context.Context, recordType string) (string, []cloudflare.DNSRecord, error) {
+	zones, err := cf.client.ListZones(ctx)
+	if err != nil {
+		return "", nil, err
+	}
+
+	// Get zone
+	zoneID := ""
+	for i := range zones {
+		if strings.Contains(cf.domain, zones[i].Name) {
+			zoneID = zones[i].ID
+		}
+	}
+	if zoneID == "" {
+		return "", nil, errors.New("cannot find a valid zone")
+	}
+
+	records, _, err := cf.client.ListDNSRecords(ctx, cloudflare.ZoneIdentifier(zoneID), cloudflare.ListDNSRecordsParams{
+		Type: recordType,
+		Name: cf.domain,
+	})
+	if err != nil {
+		return "", nil, err
+	}
+	return zoneID, records, nil
+}
+
+func (cf *Cloudflare) GetDomainRecords(recordType string) (domains map[string]bool, err error) {
+	domains = make(map[string]bool)
+	ctx := context.Background()
+	_, records, err := cf.getRecords(ctx, recordType)
+	if err != nil {
+		log.Error(err)
+		return nil, err
+	}
+
+	for i := range records {
+		domains[records[i].Content] = true
+	}
+	return domains, nil
 }
