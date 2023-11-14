@@ -16,7 +16,7 @@ import (
 	"github.com/thank243/lightsailMon/common/ddns"
 	"github.com/thank243/lightsailMon/common/notify"
 	"github.com/thank243/lightsailMon/config"
-	"github.com/thank243/lightsailMon/utils"
+	"github.com/thank243/lightsailMon/helper"
 )
 
 func New(configNode *config.Node) *Node {
@@ -53,8 +53,8 @@ func New(configNode *config.Node) *Node {
 		case "tcp6":
 			node.ip = aws.StringValue(inst.Instance.Ipv6Addresses[0])
 		}
-		if node.ip != utils.GetDomainIP(node.network, node.domain) {
-			log.Infof("[%s] sync node ip to domain", configNode.Domain)
+		if node.ip != helper.GetDomainIP(node.network, node.domain) {
+			log.Infof("[%s] Sync node ip with domain", configNode.Domain)
 			err := node.ddnsClient.AddUpdateDomainRecords(node.network, node.ip)
 			if err != nil {
 				log.Error(err)
@@ -124,7 +124,7 @@ func (n *Node) setNodeIP(ipType string) {
 }
 
 func (n *Node) RenewIP() {
-	log.Errorf("[%s:%d] Change node IP", n.domain, n.port)
+	log.Warnf("[%s:%d] Change node IP", n.domain, n.port)
 	isDone := false
 	for i := 0; i < 3; i++ {
 		switch n.network {
@@ -142,10 +142,10 @@ func (n *Node) RenewIP() {
 
 		// check again connection
 		if _, err := n.checkConnection(); err != nil {
-			log.Errorf("renew IP post check: %v attempt retry.. (%d/3)", err, i+1)
+			log.Errorf("Renew IP post check: %v attempt retry.. (%d/3)", err, i+1)
 		} else {
 			isDone = true
-			log.Infof("renew IP post check: success")
+			log.Infof("Renew IP post check: success")
 			break
 		}
 	}
