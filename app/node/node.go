@@ -34,7 +34,7 @@ func New(configNode *config.Node) *Node {
 
 	// init node
 	node := &Node{
-		Svc:     lightsail.New(sess, aws.NewConfig().WithRegion(configNode.Region)),
+		svc:     lightsail.New(sess, aws.NewConfig().WithRegion(configNode.Region)),
 		name:    configNode.InstanceName,
 		network: configNode.Network,
 		domain:  configNode.Domain,
@@ -43,7 +43,7 @@ func New(configNode *config.Node) *Node {
 	}
 
 	// Get lightsail instance IP and sync to domain
-	inst, err := node.Svc.GetInstance(&lightsail.GetInstanceInput{InstanceName: aws.String(node.name)})
+	inst, err := node.svc.GetInstance(&lightsail.GetInstanceInput{InstanceName: aws.String(node.name)})
 	if err != nil {
 		log.Error(err)
 	} else {
@@ -74,7 +74,7 @@ func (n *Node) RenewIP() {
 		case "tcp4":
 			// attach IP
 			log.Debugf("[%s:%d] Attach static IP", n.domain, n.port)
-			if _, err := n.Svc.AttachStaticIp(&lightsail.AttachStaticIpInput{
+			if _, err := n.svc.AttachStaticIp(&lightsail.AttachStaticIpInput{
 				InstanceName: aws.String(n.name),
 				StaticIpName: aws.String("LightsailMon"),
 			}); err != nil {
@@ -85,14 +85,14 @@ func (n *Node) RenewIP() {
 
 			// detach IP
 			log.Debugf("[%s:%d] Detach static IP", n.domain, n.port)
-			if _, err := n.Svc.DetachStaticIp(&lightsail.DetachStaticIpInput{
+			if _, err := n.svc.DetachStaticIp(&lightsail.DetachStaticIpInput{
 				StaticIpName: aws.String("LightsailMon"),
 			}); err != nil {
 				log.Error(err)
 			}
 
 			// update node IP
-			inst, err := n.Svc.GetInstance(&lightsail.GetInstanceInput{InstanceName: aws.String(n.name)})
+			inst, err := n.svc.GetInstance(&lightsail.GetInstanceInput{InstanceName: aws.String(n.name)})
 			if err != nil {
 				log.Error(err)
 				continue
@@ -101,7 +101,7 @@ func (n *Node) RenewIP() {
 		case "tcp6":
 			// disable dual-stack network
 			log.Debugf("[%s:%d] Disable dual-stack network", n.domain, n.port)
-			if _, err := n.Svc.SetIpAddressTypeRequest(&lightsail.SetIpAddressTypeInput{
+			if _, err := n.svc.SetIpAddressTypeRequest(&lightsail.SetIpAddressTypeInput{
 				IpAddressType: aws.String("ipv4"),
 				ResourceName:  aws.String(n.name),
 			}); err != nil {
@@ -112,7 +112,7 @@ func (n *Node) RenewIP() {
 
 			// enable dual-stack network
 			log.Debugf("[%s:%d] Enable dual-stack network", n.domain, n.port)
-			if _, err := n.Svc.SetIpAddressTypeRequest(&lightsail.SetIpAddressTypeInput{
+			if _, err := n.svc.SetIpAddressTypeRequest(&lightsail.SetIpAddressTypeInput{
 				IpAddressType: aws.String("dualstack"),
 				ResourceName:  aws.String(n.name),
 			}); err != nil {
@@ -120,7 +120,7 @@ func (n *Node) RenewIP() {
 			}
 
 			// update node IP
-			inst, err := n.Svc.GetInstance(&lightsail.GetInstanceInput{InstanceName: aws.String(n.name)})
+			inst, err := n.svc.GetInstance(&lightsail.GetInstanceInput{InstanceName: aws.String(n.name)})
 			if err != nil {
 				log.Error(err)
 				continue
@@ -230,7 +230,7 @@ func (n *Node) UpdateDomainIp() {
 
 func (n *Node) IsBlock() bool {
 	addr := fmt.Sprintf("%s:%d", n.domain, n.port)
-	credValue, _ := n.Svc.Config.Credentials.Get()
+	credValue, _ := n.svc.Config.Credentials.Get()
 
 	if delay, err := n.checkConnection(); err != nil {
 		var v *net.OpError
@@ -254,4 +254,12 @@ func (n *Node) SetNotifier(notify notify.Notify) {
 
 func (n *Node) SetDdnsClient(cli ddns.Client) {
 	n.ddnsClient = cli
+}
+
+func (n *Node) Domain() string {
+	return n.domain
+}
+
+func (n *Node) GetSvc() *lightsail.Lightsail {
+	return n.svc
 }

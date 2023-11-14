@@ -40,13 +40,7 @@ func New(c *config.Config) *Service {
 	}
 	fmt.Printf("Log level: %s  (Concurrent: %d, DDNS: %s, Notifier: %s)\n", c.LogLevel, c.Concurrent,
 		ddnsStatus, notifierStatus)
-
-	for i := range c.Nodes {
-		node := node.New(c.Nodes[i])
-		s.buildNode(c.Nodes[i], node)
-
-		s.nodes = append(s.nodes, node)
-	}
+	s.nodes = s.buildNodes()
 
 	return s
 }
@@ -96,7 +90,7 @@ func (s *Service) Run() {
 
 func (s *Service) handler() {
 	var blockNodes []*node.Node
-	svcMap := make(map[*lightsail.Lightsail]uint8)
+	svcMap := make(map[*lightsail.Lightsail]bool)
 
 	// get block nodes
 	for k := range s.nodes {
@@ -117,7 +111,7 @@ func (s *Service) handler() {
 
 				// add to blockNodes
 				blockNodes = append(blockNodes, n)
-				svcMap[n.Svc] = 0
+				svcMap[n.GetSvc()] = true
 			}
 		}(s.nodes[k])
 	}

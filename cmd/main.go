@@ -24,22 +24,22 @@ func main() {
 	}
 
 	// init config
-	conf := config.GetConfig()
+	getConfig := config.GetConfig()
 	c := new(config.Config)
-	if err := conf.Unmarshal(c); err != nil {
+	if err := getConfig.Unmarshal(c); err != nil {
 		log.Panic(err)
 	}
 
-	// start server
+	// start service
 	s := controller.New(c)
 	s.Start()
 
-	// Hot reload configure
+	// hot reload configure
 	lastTime := time.Now()
-	conf.OnConfigChange(func(e fsnotify.Event) {
+	getConfig.OnConfigChange(func(e fsnotify.Event) {
 		if time.Now().After(lastTime.Add(time.Second * 3)) {
 			log.Println("Config file changed:", e.Name)
-			if err := conf.Unmarshal(c); err != nil {
+			if err := getConfig.Unmarshal(c); err != nil {
 				log.Panic(err)
 			}
 			// release server resource
@@ -52,7 +52,7 @@ func main() {
 		}
 		lastTime = time.Now()
 	})
-	conf.WatchConfig()
+	getConfig.WatchConfig()
 
 	// Running backend
 	osSignals := make(chan os.Signal, 1)

@@ -10,7 +10,7 @@ import (
 )
 
 type Node struct {
-	Svc *lightsail.Lightsail
+	svc *lightsail.Lightsail
 
 	name       string
 	network    string
