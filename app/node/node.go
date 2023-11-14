@@ -1,4 +1,4 @@
-package controller
+package node
 
 import (
 	"errors"
@@ -13,98 +13,68 @@ import (
 	"github.com/aws/aws-sdk-go/service/lightsail"
 	log "github.com/sirupsen/logrus"
 
-	"github.com/thank243/lightsailMon/common/ddns/cloudflare"
-	"github.com/thank243/lightsailMon/common/ddns/google"
+	"github.com/thank243/lightsailMon/common/ddns"
 	"github.com/thank243/lightsailMon/common/notify"
 	"github.com/thank243/lightsailMon/config"
 	"github.com/thank243/lightsailMon/utils"
 )
 
-func buildNodes(c *config.Config) (nodes []*node) {
-	for i := range c.Nodes {
-		n := c.Nodes[i]
-		// create account session
-		sess, err := session.NewSession(&aws.Config{
-			Credentials: credentials.NewStaticCredentials(
-				n.AccessKeyID,
-				n.SecretAccessKey,
-				"",
-			),
-		})
-		if err != nil {
-			log.Panic(err)
-		}
-
-		// init node
-		newNode := &node{
-			name:    n.InstanceName,
-			network: n.Network,
-			domain:  n.Domain,
-			port:    n.Port,
-			svc:     lightsail.New(sess, aws.NewConfig().WithRegion(n.Region)),
-			timeout: time.Second * time.Duration(c.Timeout),
-		}
-
-		// init ddns client
-		if c.DDNS != nil && c.DDNS.Enable {
-			switch c.DDNS.Provider {
-			case "cloudflare":
-				if newNode.ddnsClient, err = cloudflare.New(c.DDNS.Config, n.Domain); err != nil {
-					log.Panicln(err)
-				}
-			case "google":
-				if newNode.ddnsClient, err = google.New(c.DDNS.Config, n.Domain); err != nil {
-					log.Panicln(err)
-				}
-			}
-		}
-
-		// Get lightsail instance IP and sync to domain
-		inst, err := newNode.svc.GetInstance(&lightsail.GetInstanceInput{InstanceName: aws.String(newNode.name)})
-		if err != nil {
-			log.Error(err)
-		} else {
-			switch newNode.network {
-			case "tcp4":
-				newNode.ip = aws.StringValue(inst.Instance.PublicIpAddress)
-			case "tcp6":
-				newNode.ip = aws.StringValue(inst.Instance.Ipv6Addresses[0])
-			}
-			if newNode.ip != utils.GetDomainIP(newNode.network, newNode.domain) {
-				log.Infof("[%s] sync node ip to domain", n.Domain)
-				err := newNode.ddnsClient.AddUpdateDomainRecords(newNode.network, newNode.ip)
-				if err != nil {
-					log.Error(err)
-				}
-			}
-		}
-
-		// init notifier
-		if c.Notify != nil && c.Notify.Enable {
-			switch c.Notify.Provider {
-			case "pushplus":
-				newNode.notifier = &notify.PushPlus{Token: c.Notify.Config["pushplus_token"].(string)}
-			case "telegram":
-				newNode.notifier = &notify.Telegram{
-					ChatID: int64(c.Notify.Config["telegram_chatid"].(int)),
-					Token:  c.Notify.Config["telegram_token"].(string),
-				}
-			}
-		}
-		nodes = append(nodes, newNode)
+func New(configNode *config.Node) *Node {
+	// create account session
+	sess, err := session.NewSession(&aws.Config{
+		Credentials: credentials.NewStaticCredentials(
+			configNode.AccessKeyID,
+			configNode.SecretAccessKey,
+			"",
+		),
+	})
+	if err != nil {
+		log.Panic(err)
 	}
 
-	return nodes
+	// init node
+	node := &Node{
+		Svc:     lightsail.New(sess, aws.NewConfig().WithRegion(configNode.Region)),
+		name:    configNode.InstanceName,
+		network: configNode.Network,
+		domain:  configNode.Domain,
+		port:    configNode.Port,
+		timeout: time.Second * 5,
+	}
+
+	// Get lightsail instance IP and sync to domain
+	inst, err := node.Svc.GetInstance(&lightsail.GetInstanceInput{InstanceName: aws.String(node.name)})
+	if err != nil {
+		log.Error(err)
+	} else {
+		switch node.network {
+		case "tcp4":
+			node.ip = aws.StringValue(inst.Instance.PublicIpAddress)
+		case "tcp6":
+			node.ip = aws.StringValue(inst.Instance.Ipv6Addresses[0])
+		}
+		if node.ip != utils.GetDomainIP(node.network, node.domain) {
+			log.Infof("[%s] sync node ip to domain", configNode.Domain)
+			err := node.ddnsClient.AddUpdateDomainRecords(node.network, node.ip)
+			if err != nil {
+				log.Error(err)
+			}
+		}
+	}
+
+	return node
 }
 
-func (n *node) renewIP() {
+func (n *Node) RenewIP() {
+	log.Errorf("[%s:%d] Change node IP", n.domain, n.port)
+
 	isDone := false
 	for i := 0; i < 3; i++ {
 		switch n.network {
 		case "tcp4":
 			// attach IP
 			log.Debugf("[%s:%d] Attach static IP", n.domain, n.port)
-			if _, err := n.svc.AttachStaticIp(&lightsail.AttachStaticIpInput{
+			if _, err := n.Svc.AttachStaticIp(&lightsail.AttachStaticIpInput{
 				InstanceName: aws.String(n.name),
 				StaticIpName: aws.String("LightsailMon"),
 			}); err != nil {
@@ -115,14 +85,14 @@ func (n *node) renewIP() {
 
 			// detach IP
 			log.Debugf("[%s:%d] Detach static IP", n.domain, n.port)
-			if _, err := n.svc.DetachStaticIp(&lightsail.DetachStaticIpInput{
+			if _, err := n.Svc.DetachStaticIp(&lightsail.DetachStaticIpInput{
 				StaticIpName: aws.String("LightsailMon"),
 			}); err != nil {
 				log.Error(err)
 			}
 
 			// update node IP
-			inst, err := n.svc.GetInstance(&lightsail.GetInstanceInput{InstanceName: aws.String(n.name)})
+			inst, err := n.Svc.GetInstance(&lightsail.GetInstanceInput{InstanceName: aws.String(n.name)})
 			if err != nil {
 				log.Error(err)
 				continue
@@ -131,7 +101,7 @@ func (n *node) renewIP() {
 		case "tcp6":
 			// disable dual-stack network
 			log.Debugf("[%s:%d] Disable dual-stack network", n.domain, n.port)
-			if _, err := n.svc.SetIpAddressTypeRequest(&lightsail.SetIpAddressTypeInput{
+			if _, err := n.Svc.SetIpAddressTypeRequest(&lightsail.SetIpAddressTypeInput{
 				IpAddressType: aws.String("ipv4"),
 				ResourceName:  aws.String(n.name),
 			}); err != nil {
@@ -142,7 +112,7 @@ func (n *node) renewIP() {
 
 			// enable dual-stack network
 			log.Debugf("[%s:%d] Enable dual-stack network", n.domain, n.port)
-			if _, err := n.svc.SetIpAddressTypeRequest(&lightsail.SetIpAddressTypeInput{
+			if _, err := n.Svc.SetIpAddressTypeRequest(&lightsail.SetIpAddressTypeInput{
 				IpAddressType: aws.String("dualstack"),
 				ResourceName:  aws.String(n.name),
 			}); err != nil {
@@ -150,7 +120,7 @@ func (n *node) renewIP() {
 			}
 
 			// update node IP
-			inst, err := n.svc.GetInstance(&lightsail.GetInstanceInput{InstanceName: aws.String(n.name)})
+			inst, err := n.Svc.GetInstance(&lightsail.GetInstanceInput{InstanceName: aws.String(n.name)})
 			if err != nil {
 				log.Error(err)
 				continue
@@ -168,7 +138,28 @@ func (n *node) renewIP() {
 		}
 	}
 
-	// push message
+	n.pushMessage(isDone)
+	n.updateDomain()
+}
+
+// Update domain record
+func (n *Node) updateDomain() {
+	if n.ddnsClient != nil {
+		for i := 0; i < 3; i++ {
+			if err := n.ddnsClient.AddUpdateDomainRecords(n.network, n.ip); err != nil {
+				log.Error(err)
+				if i == 2 {
+					break
+				}
+
+				time.Sleep(time.Second * 5)
+			}
+		}
+	}
+}
+
+// push message
+func (n *Node) pushMessage(isDone bool) {
 	if n.notifier != nil {
 		if isDone {
 			if err := n.notifier.Webhook(n.domain, fmt.Sprintf("IP changed: %s", n.ip)); err != nil {
@@ -184,21 +175,9 @@ func (n *node) renewIP() {
 			}
 		}
 	}
-
-	// Update domain record
-	if n.ddnsClient != nil {
-		for i := 0; i < 3; i++ {
-			if err := n.ddnsClient.AddUpdateDomainRecords(n.network, n.ip); err != nil {
-				log.Error(err)
-				time.Sleep(time.Second * 5)
-			} else {
-				break
-			}
-		}
-	}
 }
 
-func (n *node) checkConnection() (int64, error) {
+func (n *Node) checkConnection() (int64, error) {
 	var (
 		conn net.Conn
 		err  error
@@ -223,7 +202,7 @@ func (n *node) checkConnection() (int64, error) {
 	return 0, err
 }
 
-func (n *node) UpdateDomainIp() {
+func (n *Node) UpdateDomainIp() {
 	// check domain sync with ip
 	if n.ddnsClient != nil {
 		var (
@@ -249,9 +228,9 @@ func (n *node) UpdateDomainIp() {
 	}
 }
 
-func (n *node) IsBlock() bool {
-	addr := fmt.Sprint(n.domain + ":" + strconv.Itoa(n.port))
-	credValue, _ := n.svc.Config.Credentials.Get()
+func (n *Node) IsBlock() bool {
+	addr := fmt.Sprintf("%s:%d", n.domain, n.port)
+	credValue, _ := n.Svc.Config.Credentials.Get()
 
 	if delay, err := n.checkConnection(); err != nil {
 		var v *net.OpError
@@ -263,4 +242,16 @@ func (n *node) IsBlock() bool {
 		log.Infof("[%s] Tcping: %d ms", addr, delay)
 	}
 	return false
+}
+
+func (n *Node) SetTimeout(t int) {
+	n.timeout = time.Second * time.Duration(t)
+}
+
+func (n *Node) SetNotifier(notify notify.Notify) {
+	n.notifier = notify
+}
+
+func (n *Node) SetDdnsClient(cli ddns.Client) {
+	n.ddnsClient = cli
 }

@@ -1,4 +1,4 @@
-package controller
+package node
 
 import (
 	"testing"
@@ -9,7 +9,7 @@ import (
 
 func TestCheckConnection(t *testing.T) {
 	log.SetLevel(log.DebugLevel)
-	n := &node{
+	n := &Node{
 		network: "tcp4",
 		ip:      "127.0.0.1",
 		port:    8080,

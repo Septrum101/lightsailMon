@@ -10,11 +10,13 @@ import (
 	"github.com/robfig/cron/v3"
 	log "github.com/sirupsen/logrus"
 
+	"github.com/thank243/lightsailMon/app/node"
 	"github.com/thank243/lightsailMon/config"
 )
 
 func New(c *config.Config) *Service {
 	s := &Service{
+		conf:     c,
 		cron:     cron.New(),
 		internal: c.Internal,
 		timeout:  c.Timeout,
@@ -39,7 +41,12 @@ func New(c *config.Config) *Service {
 	fmt.Printf("Log level: %s  (Concurrent: %d, DDNS: %s, Notifier: %s)\n", c.LogLevel, c.Concurrent,
 		ddnsStatus, notifierStatus)
 
-	s.nodes = buildNodes(c)
+	for i := range c.Nodes {
+		node := node.New(c.Nodes[i])
+		s.buildNode(c.Nodes[i], node)
+
+		s.nodes = append(s.nodes, node)
+	}
 
 	return s
 }
@@ -61,6 +68,17 @@ func (s *Service) Start() {
 	log.Warnln(config.AppName, "Started")
 }
 
+func (s *Service) Close() {
+	log.Infoln(config.AppName, "Closing..")
+	entry := s.cron.Entries()
+	for i := range entry {
+		s.cron.Remove(entry[i].ID)
+	}
+	s.cron.Stop()
+	close(s.worker)
+	s.running = false
+}
+
 func (s *Service) Run() {
 	// check local network connection
 	resp, err := resty.New().SetRetryCount(3).R().Get("http://www.gstatic.com/generate_204")
@@ -77,14 +95,15 @@ func (s *Service) Run() {
 }
 
 func (s *Service) handler() {
-	var blockNodes []*node
+	var blockNodes []*node.Node
 	svcMap := make(map[*lightsail.Lightsail]uint8)
 
+	// get block nodes
 	for k := range s.nodes {
 		s.wg.Add(1)
 		s.worker <- 0
 
-		go func(n *node) {
+		go func(n *node.Node) {
 			defer func() {
 				<-s.worker
 				s.wg.Done()
@@ -98,12 +117,13 @@ func (s *Service) handler() {
 
 				// add to blockNodes
 				blockNodes = append(blockNodes, n)
-				svcMap[n.svc] = 0
+				svcMap[n.Svc] = 0
 			}
 		}(s.nodes[k])
 	}
 	s.wg.Wait()
 
+	// change block nodes ip
 	if len(blockNodes) > 0 {
 		// Release and Allocate Static Ip
 		for svc := range svcMap {
@@ -132,14 +152,13 @@ func (s *Service) handler() {
 			s.wg.Add(1)
 			s.worker <- 0
 
-			go func(n *node) {
+			go func(n *node.Node) {
 				defer func() {
 					<-s.worker
 					s.wg.Done()
 				}()
 
-				log.Errorf("[%s:%d] Change node IP", n.domain, n.port)
-				n.renewIP()
+				n.RenewIP()
 			}(blockNodes[i])
 		}
 		s.wg.Wait()
@@ -154,15 +173,4 @@ func (s *Service) handler() {
 			}
 		}
 	}
-}
-
-func (s *Service) Close() {
-	log.Infoln(config.AppName, "Closing..")
-	entry := s.cron.Entries()
-	for i := range entry {
-		s.cron.Remove(entry[i].ID)
-	}
-	s.cron.Stop()
-	close(s.worker)
-	s.running = false
 }
