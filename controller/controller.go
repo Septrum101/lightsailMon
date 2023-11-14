@@ -102,21 +102,15 @@ func (s *Service) handler() {
 
 	// get block nodes
 	for k := range s.nodes {
-		s.wg.Add(1)
-		s.worker <- 0
+		s.workerAdd()
 
 		go func(n *node.Node) {
-			defer func() {
-				<-s.worker
-				s.wg.Done()
-			}()
+			defer s.workerDone()
 
 			go n.UpdateDomainIp()
-
 			if n.IsBlock() {
 				s.Lock()
 				defer s.Unlock()
-
 				// add to blockNodes
 				blockNodes = append(blockNodes, n)
 				svcMap[n.GetSvc()] = true
@@ -129,17 +123,7 @@ func (s *Service) handler() {
 	if len(blockNodes) > 0 {
 		// Release and Allocate Static Ip
 		for svc := range svcMap {
-			log.Debugf("[Region: %s] Release previous region static IP", *svc.Config.Region)
-			if ips, err := svc.GetStaticIps(&lightsail.GetStaticIpsInput{}); err != nil {
-				log.Error(err)
-			} else {
-				for i := range ips.StaticIps {
-					ip := ips.StaticIps[i]
-					if _, err := svc.ReleaseStaticIp(&lightsail.ReleaseStaticIpInput{StaticIpName: ip.Name}); err != nil {
-						log.Error(err)
-					}
-				}
-			}
+			s.releaseStaticIps(svc)
 
 			log.Debugf("[Region: %s] Allocate region static IP", *svc.Config.Region)
 			if _, err := svc.AllocateStaticIp(&lightsail.AllocateStaticIpInput{
@@ -151,15 +135,10 @@ func (s *Service) handler() {
 
 		// handle change block IP
 		for i := range blockNodes {
-			s.wg.Add(1)
-			s.worker <- 0
+			s.workerAdd()
 
 			go func(n *node.Node) {
-				defer func() {
-					<-s.worker
-					s.wg.Done()
-				}()
-
+				defer s.workerDone()
 				n.RenewIP()
 			}(blockNodes[i])
 		}
@@ -167,10 +146,29 @@ func (s *Service) handler() {
 
 		// release static IPs
 		for svc := range svcMap {
-			log.Debugf("[Region: %s] Release region static IP", *svc.Config.Region)
-			if _, err := svc.ReleaseStaticIp(&lightsail.ReleaseStaticIpInput{
-				StaticIpName: aws.String("LightsailMon"),
-			}); err != nil {
+			s.releaseStaticIps(svc)
+		}
+	}
+}
+
+func (s *Service) workerAdd() {
+	s.wg.Add(1)
+	s.worker <- 0
+}
+
+func (s *Service) workerDone() {
+	<-s.worker
+	s.wg.Done()
+}
+
+func (s *Service) releaseStaticIps(svc *lightsail.Lightsail) {
+	log.Debugf("[Region: %s] Release region static IPs", *svc.Config.Region)
+	if ips, err := svc.GetStaticIps(&lightsail.GetStaticIpsInput{}); err != nil {
+		log.Error(err)
+	} else {
+		for i := range ips.StaticIps {
+			ip := ips.StaticIps[i]
+			if _, err := svc.ReleaseStaticIp(&lightsail.ReleaseStaticIpInput{StaticIpName: ip.Name}); err != nil {
 				log.Error(err)
 			}
 		}

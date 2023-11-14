@@ -48,14 +48,14 @@ func (s *Service) buildNodes(isNotify bool, isDDNS bool) []*node.Node {
 			newNode.SetDdnsClient(ddnsCli)
 		}
 
+		// set notifier
+		if isNotify {
+			newNode.SetNotifier(notifier)
+		}
+
 		// set connection timeout
 		if s.conf.Timeout > 0 {
 			newNode.SetTimeout(s.conf.Timeout)
-		}
-
-		// set notifier
-		if notifier != nil {
-			newNode.SetNotifier(notifier)
 		}
 
 		nodes = append(nodes, newNode)

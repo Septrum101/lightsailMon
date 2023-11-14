@@ -65,67 +65,79 @@ func New(configNode *config.Node) *Node {
 	return node
 }
 
+// attachIP is a helper function to attach static IP to instance
+func (n *Node) attachIP() {
+	log.Debugf("[%s:%d] Attach static IP", n.domain, n.port)
+	if _, err := n.svc.AttachStaticIp(&lightsail.AttachStaticIpInput{
+		InstanceName: aws.String(n.name),
+		StaticIpName: aws.String("LightsailMon"),
+	}); err != nil {
+		log.Error(err)
+	}
+}
+
+// detachIP is a helper function to detach static IP from instance
+func (n *Node) detachIP() {
+	log.Debugf("[%s:%d] Detach static IP", n.domain, n.port)
+	if _, err := n.svc.DetachStaticIp(&lightsail.DetachStaticIpInput{
+		StaticIpName: aws.String("LightsailMon"),
+	}); err != nil {
+		log.Error(err)
+	}
+}
+
+// disableDualStack is a helper function to disable dual stack network
+func (n *Node) disableDualStack() {
+	log.Debugf("[%s:%d] Disable dual-stack network", n.domain, n.port)
+	if _, err := n.svc.SetIpAddressTypeRequest(&lightsail.SetIpAddressTypeInput{
+		IpAddressType: aws.String("ipv4"),
+		ResourceName:  aws.String(n.name),
+	}); err != nil {
+		log.Error(err)
+	}
+}
+
+// enableDualStack is a helper function to enable dual stack network
+func (n *Node) enableDualStack() {
+	log.Debugf("[%s:%d] Enable dual-stack network", n.domain, n.port)
+	if _, err := n.svc.SetIpAddressTypeRequest(&lightsail.SetIpAddressTypeInput{
+		IpAddressType: aws.String("dualstack"),
+		ResourceName:  aws.String(n.name),
+	}); err != nil {
+		log.Error(err)
+	}
+}
+
+// setNodeIP is a helper function to update instance IP address
+func (n *Node) setNodeIP(ipType string) {
+	inst, err := n.svc.GetInstance(&lightsail.GetInstanceInput{InstanceName: aws.String(n.name)})
+	if err != nil {
+		log.Error(err)
+	}
+
+	switch ipType {
+	case "ipv4":
+		n.ip = aws.StringValue(inst.Instance.PublicIpAddress)
+	case "ipv6":
+		n.ip = aws.StringValue(inst.Instance.Ipv6Addresses[0])
+	}
+}
+
 func (n *Node) RenewIP() {
 	log.Errorf("[%s:%d] Change node IP", n.domain, n.port)
-
 	isDone := false
 	for i := 0; i < 3; i++ {
 		switch n.network {
 		case "tcp4":
-			// attach IP
-			log.Debugf("[%s:%d] Attach static IP", n.domain, n.port)
-			if _, err := n.svc.AttachStaticIp(&lightsail.AttachStaticIpInput{
-				InstanceName: aws.String(n.name),
-				StaticIpName: aws.String("LightsailMon"),
-			}); err != nil {
-				log.Error(err)
-			}
-
+			n.attachIP()
 			time.Sleep(time.Second * 5)
-
-			// detach IP
-			log.Debugf("[%s:%d] Detach static IP", n.domain, n.port)
-			if _, err := n.svc.DetachStaticIp(&lightsail.DetachStaticIpInput{
-				StaticIpName: aws.String("LightsailMon"),
-			}); err != nil {
-				log.Error(err)
-			}
-
-			// update node IP
-			inst, err := n.svc.GetInstance(&lightsail.GetInstanceInput{InstanceName: aws.String(n.name)})
-			if err != nil {
-				log.Error(err)
-				continue
-			}
-			n.ip = aws.StringValue(inst.Instance.PublicIpAddress)
+			n.detachIP()
+			n.setNodeIP("ipv4")
 		case "tcp6":
-			// disable dual-stack network
-			log.Debugf("[%s:%d] Disable dual-stack network", n.domain, n.port)
-			if _, err := n.svc.SetIpAddressTypeRequest(&lightsail.SetIpAddressTypeInput{
-				IpAddressType: aws.String("ipv4"),
-				ResourceName:  aws.String(n.name),
-			}); err != nil {
-				log.Error(err)
-			}
-
+			n.disableDualStack()
 			time.Sleep(time.Second * 5)
-
-			// enable dual-stack network
-			log.Debugf("[%s:%d] Enable dual-stack network", n.domain, n.port)
-			if _, err := n.svc.SetIpAddressTypeRequest(&lightsail.SetIpAddressTypeInput{
-				IpAddressType: aws.String("dualstack"),
-				ResourceName:  aws.String(n.name),
-			}); err != nil {
-				log.Error(err)
-			}
-
-			// update node IP
-			inst, err := n.svc.GetInstance(&lightsail.GetInstanceInput{InstanceName: aws.String(n.name)})
-			if err != nil {
-				log.Error(err)
-				continue
-			}
-			n.ip = aws.StringValue(inst.Instance.Ipv6Addresses[0])
+			n.enableDualStack()
+			n.setNodeIP("ipv6")
 		}
 
 		// check again connection
