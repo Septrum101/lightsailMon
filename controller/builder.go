@@ -1,7 +1,7 @@
 package controller
 
 import (
-	"github.com/sirupsen/logrus"
+	log "github.com/sirupsen/logrus"
 
 	"github.com/thank243/lightsailMon/app/node"
 	"github.com/thank243/lightsailMon/common/ddns"
@@ -10,10 +10,10 @@ import (
 	"github.com/thank243/lightsailMon/common/notify"
 )
 
-func (s *Service) buildNodes() []*node.Node {
+func (s *Service) buildNodes(isNotify bool, isDDNS bool) []*node.Node {
 	// init notifier
 	var notifier notify.Notify
-	if s.conf.Notify != nil && s.conf.Notify.Enable {
+	if isNotify {
 		switch s.conf.Notify.Provider {
 		case "pushplus":
 			notifier = &notify.PushPlus{Token: s.conf.Notify.Config["pushplus_token"].(string)}
@@ -34,15 +34,15 @@ func (s *Service) buildNodes() []*node.Node {
 			ddnsCli ddns.Client
 			err     error
 		)
-		if s.conf.DDNS != nil && s.conf.DDNS.Enable {
+		if isDDNS {
 			switch s.conf.DDNS.Provider {
 			case "cloudflare":
 				if ddnsCli, err = cloudflare.New(s.conf.DDNS.Config, newNode.Domain()); err != nil {
-					logrus.Panicln(err)
+					log.Panicln(err)
 				}
 			case "google":
 				if ddnsCli, err = google.New(s.conf.DDNS.Config, newNode.Domain()); err != nil {
-					logrus.Panicln(err)
+					log.Panicln(err)
 				}
 			}
 			newNode.SetDdnsClient(ddnsCli)

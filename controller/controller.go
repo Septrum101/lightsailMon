@@ -30,17 +30,25 @@ func New(c *config.Config) *Service {
 		log.SetLevel(l)
 	}
 
+	isNotify := c.Notify != nil && c.Notify.Enable
+	isDDNS := c.DDNS != nil && c.DDNS.Enable
+
 	ddnsStatus := "off"
-	if c.DDNS.Enable {
+	if isDDNS {
 		ddnsStatus = strings.Title(c.DDNS.Provider)
 	}
 	notifierStatus := "off"
-	if c.Notify.Enable {
+	if isNotify {
 		notifierStatus = strings.Title(c.Notify.Provider)
 	}
 	fmt.Printf("Log level: %s  (Concurrent: %d, DDNS: %s, Notifier: %s)\n", c.LogLevel, c.Concurrent,
 		ddnsStatus, notifierStatus)
-	s.nodes = s.buildNodes()
+
+	nodes := s.buildNodes(isNotify, isDDNS)
+	if len(nodes) == 0 {
+		log.Panic("no valid node")
+	}
+	s.nodes = nodes
 
 	return s
 }
@@ -121,7 +129,7 @@ func (s *Service) handler() {
 	if len(blockNodes) > 0 {
 		// Release and Allocate Static Ip
 		for svc := range svcMap {
-			log.Debugf("[Region: %s] Release region static IP", *svc.Config.Region)
+			log.Debugf("[Region: %s] Release previous region static IP", *svc.Config.Region)
 			if ips, err := svc.GetStaticIps(&lightsail.GetStaticIpsInput{}); err != nil {
 				log.Error(err)
 			} else {
