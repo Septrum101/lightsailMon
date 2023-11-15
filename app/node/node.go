@@ -54,7 +54,7 @@ func New(configNode *config.Node) *Node {
 			node.ip = aws.StringValue(inst.Instance.Ipv6Addresses[0])
 		}
 		if node.ip != helper.GetDomainIP(node.network, node.domain) {
-			log.Infof("[%s] Sync node ip with domain", configNode.Domain)
+			log.Infof("[%s] Sync node ip with domain", node.domain)
 			err := node.ddnsClient.AddUpdateDomainRecords(node.network, node.ip)
 			if err != nil {
 				log.Error(err)
@@ -67,7 +67,7 @@ func New(configNode *config.Node) *Node {
 
 // attachIP is a helper function to attach static IP to instance
 func (n *Node) attachIP() {
-	log.Debugf("[%s:%d] Attach static IP", n.domain, n.port)
+	log.Debugf("[%s] Attach static IP", n.domain)
 	if _, err := n.svc.AttachStaticIp(&lightsail.AttachStaticIpInput{
 		InstanceName: aws.String(n.name),
 		StaticIpName: aws.String("LightsailMon"),
@@ -78,7 +78,7 @@ func (n *Node) attachIP() {
 
 // detachIP is a helper function to detach static IP from instance
 func (n *Node) detachIP() {
-	log.Debugf("[%s:%d] Detach static IP", n.domain, n.port)
+	log.Debugf("[%s] Detach static IP", n.domain)
 	if _, err := n.svc.DetachStaticIp(&lightsail.DetachStaticIpInput{
 		StaticIpName: aws.String("LightsailMon"),
 	}); err != nil {
@@ -88,7 +88,7 @@ func (n *Node) detachIP() {
 
 // disableDualStack is a helper function to disable dual stack network
 func (n *Node) disableDualStack() {
-	log.Debugf("[%s:%d] Disable dual-stack network", n.domain, n.port)
+	log.Debugf("[%s] Disable dual-stack network", n.domain)
 	if _, err := n.svc.SetIpAddressTypeRequest(&lightsail.SetIpAddressTypeInput{
 		IpAddressType: aws.String("ipv4"),
 		ResourceName:  aws.String(n.name),
@@ -99,7 +99,7 @@ func (n *Node) disableDualStack() {
 
 // enableDualStack is a helper function to enable dual stack network
 func (n *Node) enableDualStack() {
-	log.Debugf("[%s:%d] Enable dual-stack network", n.domain, n.port)
+	log.Debugf("[%s] Enable dual-stack network", n.domain)
 	if _, err := n.svc.SetIpAddressTypeRequest(&lightsail.SetIpAddressTypeInput{
 		IpAddressType: aws.String("dualstack"),
 		ResourceName:  aws.String(n.name),
@@ -124,7 +124,7 @@ func (n *Node) setNodeIP(ipType string) {
 }
 
 func (n *Node) RenewIP() {
-	log.Warnf("[%s:%d] Change node IP", n.domain, n.port)
+	log.Warnf("[%s] Change node IP", n.domain)
 	isDone := false
 	for i := 0; i < 3; i++ {
 		switch n.network {
@@ -142,10 +142,10 @@ func (n *Node) RenewIP() {
 
 		// check again connection
 		if _, err := n.checkConnection(); err != nil {
-			log.Errorf("Renew IP post check: %v attempt retry.. (%d/3)", err, i+1)
+			log.Errorf("[%s] Renew IP post check: %v attempt retry.. (%d/3)", n.domain, err, i+1)
 		} else {
+			log.Infof("[%s] Renew IP post check: success", n.domain)
 			isDone = true
-			log.Infof("Renew IP post check: success")
 			break
 		}
 	}
@@ -161,7 +161,7 @@ func (n *Node) updateDomain() {
 			if err := n.ddnsClient.AddUpdateDomainRecords(n.network, n.ip); err != nil {
 				log.Error(err)
 				if i == 2 {
-					break
+					return
 				}
 				time.Sleep(time.Second * 5)
 			} else {
@@ -175,16 +175,16 @@ func (n *Node) updateDomain() {
 func (n *Node) pushMessage(isDone bool) {
 	if n.notifier != nil {
 		if isDone {
-			if err := n.notifier.Webhook(n.domain, fmt.Sprintf("IP changed: %s", n.ip)); err != nil {
+			if err := n.notifier.Webhook(n.domain, fmt.Sprintf("[%s] IP changed: %s", n.domain, n.ip)); err != nil {
 				log.Error(err)
 			} else {
 				log.Infof("[%s:%d] Push message success", n.domain, n.port)
 			}
 		} else {
-			if err := n.notifier.Webhook(n.domain, "Connection block after IP refresh 3 times"); err != nil {
+			if err := n.notifier.Webhook(n.domain, fmt.Sprintf("[%s] Connection block after IP refresh 3 times", n.domain)); err != nil {
 				log.Error(err)
 			} else {
-				log.Infof("[%s:%d] Push message success", n.domain, n.port)
+				log.Infof("[%s] Push message success", n.domain)
 			}
 		}
 	}
