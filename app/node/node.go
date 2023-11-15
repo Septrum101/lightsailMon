@@ -163,8 +163,9 @@ func (n *Node) updateDomain() {
 				if i == 2 {
 					break
 				}
-
 				time.Sleep(time.Second * 5)
+			} else {
+				return
 			}
 		}
 	}
