@@ -10,7 +10,6 @@ import (
 )
 
 type Google struct {
-	domain   string
 	username string
 	password string
 	lastIpv4 string
@@ -18,33 +17,31 @@ type Google struct {
 	client   *resty.Client
 }
 
-func New(c map[string]string, d string) (*Google, error) {
+func New(c map[string]string) (*Google, error) {
 	g := &Google{
-		domain:   d,
 		username: c[strings.ToLower("GOOGLEDOMAIN_USERNAME")],
 		password: c[strings.ToLower("GOOGLEDOMAIN_PASSWORD")],
 	}
 
 	cli := resty.New()
-	cli.SetBasicAuth(g.username, g.password).SetBaseURL("https://domains.google.com").
-		SetQueryParam("hostname", g.domain)
+	cli.SetBasicAuth(g.username, g.password).SetBaseURL("https://domains.google.com")
 	g.client = cli
 
 	return g, nil
 }
 
-func (g *Google) AddUpdateDomainRecords(network string, ipAddr string) error {
+func (g *Google) AddUpdateDomainRecords(network string, ipAddr string, domain string) error {
 	switch network {
 	case "tcp4":
-		return g.addUpdateDomainRecords("A", ipAddr)
+		return g.addUpdateDomainRecords("A", ipAddr, domain)
 	case "tcp6":
-		return g.addUpdateDomainRecords("AAAA", ipAddr)
+		return g.addUpdateDomainRecords("AAAA", ipAddr, domain)
 	default:
 		return errors.New("not support network")
 	}
 }
 
-func (g *Google) addUpdateDomainRecords(recordType string, ipAddr string) error {
+func (g *Google) addUpdateDomainRecords(recordType string, ipAddr string, domain string) error {
 	if ipAddr == "" {
 		return errors.New("IP address is nil")
 	}
@@ -52,19 +49,19 @@ func (g *Google) addUpdateDomainRecords(recordType string, ipAddr string) error 
 	switch recordType {
 	case "A":
 		if g.lastIpv4 == ipAddr {
-			return fmt.Errorf("[%s] IP %s have no change", g.domain, ipAddr)
+			return fmt.Errorf("[%s] IP %s have no change", domain, ipAddr)
 		}
 
-		if err := g.doRequest(ipAddr); err != nil {
+		if err := g.doRequest(ipAddr, domain); err != nil {
 			return err
 		}
 		g.lastIpv4 = ipAddr
 	case "AAAA":
 		if g.lastIpv6 == ipAddr {
-			return fmt.Errorf("[%s] IP %s have no change", g.domain, ipAddr)
+			return fmt.Errorf("[%s] IP %s have no change", domain, ipAddr)
 		}
 
-		if err := g.doRequest(ipAddr); err != nil {
+		if err := g.doRequest(ipAddr, domain); err != nil {
 			return err
 		}
 		g.lastIpv6 = ipAddr
@@ -72,21 +69,25 @@ func (g *Google) addUpdateDomainRecords(recordType string, ipAddr string) error 
 	return nil
 }
 
-func (g *Google) doRequest(ipAddr string) error {
-	resp, err := g.client.R().SetQueryParam("myip", ipAddr).Get("/nic/update")
+func (g *Google) doRequest(ipAddr string, domain string) error {
+	resp, err := g.client.R().SetQueryParam("myip", ipAddr).
+		SetQueryParams(map[string]string{
+			"myip":     ipAddr,
+			"hostname": domain,
+		}).Get("/nic/update")
 	if err != nil {
 		return err
 	}
 	respStr := resp.String()
 	if strings.Contains(respStr, "good") || strings.Contains(respStr, "nochg") {
-		log.Printf("[%s] update record success, IP: %s", g.domain, ipAddr)
+		log.Printf("[%s] update record success, IP: %s", domain, ipAddr)
 	} else {
-		return fmt.Errorf("[%s] update record failure, Error: %s", g.domain, respStr)
+		return fmt.Errorf("[%s] update record failure, Error: %s", domain, respStr)
 	}
 	return nil
 }
 
-func (g *Google) GetDomainRecords(recordType string) (domains map[string]bool, err error) {
+func (g *Google) GetDomainRecords(recordType string, domain string) (domains map[string]bool, err error) {
 	domains = make(map[string]bool)
 	switch recordType {
 	case "A":

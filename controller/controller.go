@@ -101,7 +101,7 @@ func (s *Service) handler() {
 	svcMap := make(map[*lightsail.Lightsail]bool)
 
 	// get block nodes
-	for k := range s.nodes {
+	for i := range s.nodes {
 		s.workerAdd()
 
 		go func(n *node.Node) {
@@ -115,7 +115,7 @@ func (s *Service) handler() {
 				blockNodes = append(blockNodes, n)
 				svcMap[n.GetSvc()] = true
 			}
-		}(s.nodes[k])
+		}(s.nodes[i])
 	}
 	s.wg.Wait()
 

@@ -16,7 +16,6 @@ import (
 	"github.com/thank243/lightsailMon/common/ddns"
 	"github.com/thank243/lightsailMon/common/notify"
 	"github.com/thank243/lightsailMon/config"
-	"github.com/thank243/lightsailMon/helper"
 )
 
 func New(configNode *config.Node) *Node {
@@ -52,13 +51,6 @@ func New(configNode *config.Node) *Node {
 			node.ip = aws.StringValue(inst.Instance.PublicIpAddress)
 		case "tcp6":
 			node.ip = aws.StringValue(inst.Instance.Ipv6Addresses[0])
-		}
-		if node.ip != helper.GetDomainIP(node.network, node.domain) {
-			log.Infof("[%s] Sync node ip with domain", node.domain)
-			err := node.ddnsClient.AddUpdateDomainRecords(node.network, node.ip)
-			if err != nil {
-				log.Error(err)
-			}
 		}
 	}
 
@@ -158,7 +150,7 @@ func (n *Node) RenewIP() {
 func (n *Node) updateDomain() {
 	if n.ddnsClient != nil {
 		for i := 0; i < 3; i++ {
-			if err := n.ddnsClient.AddUpdateDomainRecords(n.network, n.ip); err != nil {
+			if err := n.ddnsClient.AddUpdateDomainRecords(n.network, n.ip, n.domain); err != nil {
 				log.Error(err)
 				if i == 2 {
 					return
@@ -224,9 +216,9 @@ func (n *Node) UpdateDomainIp() {
 		)
 		switch n.network {
 		case "tcp4":
-			domainIps, err = n.ddnsClient.GetDomainRecords("A")
+			domainIps, err = n.ddnsClient.GetDomainRecords("A", n.domain)
 		case "tcp6":
-			domainIps, err = n.ddnsClient.GetDomainRecords("AAAA")
+			domainIps, err = n.ddnsClient.GetDomainRecords("AAAA", n.domain)
 		}
 		if err != nil {
 			log.Error(err)
@@ -234,7 +226,7 @@ func (n *Node) UpdateDomainIp() {
 		}
 
 		if _, ok := domainIps[n.ip]; !ok {
-			if err := n.ddnsClient.AddUpdateDomainRecords(n.network, n.ip); err != nil {
+			if err := n.ddnsClient.AddUpdateDomainRecords(n.network, n.ip, n.domain); err != nil {
 				log.Error(err)
 			}
 		}
@@ -243,12 +235,11 @@ func (n *Node) UpdateDomainIp() {
 
 func (n *Node) IsBlock() bool {
 	addr := fmt.Sprintf("%s:%d", n.domain, n.port)
-	credValue, _ := n.svc.Config.Credentials.Get()
 
 	if delay, err := n.checkConnection(); err != nil {
 		var v *net.OpError
 		if errors.As(err, &v) && v.Addr != nil {
-			log.Errorf("[AKID: %s] %s %v", credValue.AccessKeyID, addr, err)
+			log.Errorf("[%s] %v", n.domain, err)
 			return true
 		}
 	} else {

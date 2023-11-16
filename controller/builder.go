@@ -25,26 +25,28 @@ func (s *Service) buildNodes(isNotify bool, isDDNS bool) []*node.Node {
 		}
 	}
 
+	// init ddnsCli
+	var ddnsCli ddns.Client
+	if isDDNS {
+		var err error
+		switch s.conf.DDNS.Provider {
+		case "cloudflare":
+			if ddnsCli, err = cloudflare.New(s.conf.DDNS.Config); err != nil {
+				log.Panicln(err)
+			}
+		case "google":
+			if ddnsCli, err = google.New(s.conf.DDNS.Config); err != nil {
+				log.Panicln(err)
+			}
+		}
+	}
+
 	var nodes []*node.Node
 	for i := range s.conf.Nodes {
 		newNode := node.New(s.conf.Nodes[i])
 
 		// set ddns client
-		var (
-			ddnsCli ddns.Client
-			err     error
-		)
 		if isDDNS {
-			switch s.conf.DDNS.Provider {
-			case "cloudflare":
-				if ddnsCli, err = cloudflare.New(s.conf.DDNS.Config, newNode.Domain()); err != nil {
-					log.Panicln(err)
-				}
-			case "google":
-				if ddnsCli, err = google.New(s.conf.DDNS.Config, newNode.Domain()); err != nil {
-					log.Panicln(err)
-				}
-			}
 			newNode.SetDdnsClient(ddnsCli)
 		}
 
