@@ -87,14 +87,20 @@ func (g *Google) doRequest(ipAddr string, domain string) error {
 	return nil
 }
 
-func (g *Google) GetDomainRecords(recordType string, domain string) (domains map[string]bool, err error) {
-	domains = make(map[string]bool)
+func (g *Google) GetDomainRecords(recordType string, domain string) (map[string]bool, error) {
+	domains := make(map[string]bool)
 	switch recordType {
 	case "A":
-		domains[g.lastIpv4] = true
+		if g.lastIpv4 != "" {
+			domains[g.lastIpv4] = true
+			return domains, nil
+		}
 	case "AAAA":
-		domains[g.lastIpv6] = true
+		if g.lastIpv6 != "" {
+			domains[g.lastIpv6] = true
+			return domains, nil
+		}
 	}
 
-	return nil, errors.New("no record")
+	return nil, errors.New("no record cache")
 }
