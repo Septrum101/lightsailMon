@@ -150,7 +150,7 @@ func (n *Node) RenewIP() {
 func (n *Node) updateDomain() {
 	if n.ddnsClient != nil {
 		for i := 0; i < 3; i++ {
-			if err := n.ddnsClient.AddUpdateDomainRecords(n.network, n.ip, n.domain); err != nil {
+			if err := n.ddnsClient.AddUpdateDomainRecords(n.network, n.domain, n.ip); err != nil {
 				log.Error(err)
 				if i == 2 {
 					return
@@ -226,7 +226,7 @@ func (n *Node) UpdateDomainIp() {
 		}
 
 		if _, ok := domainIps[n.ip]; !ok {
-			if err := n.ddnsClient.AddUpdateDomainRecords(n.network, n.ip, n.domain); err != nil {
+			if err := n.ddnsClient.AddUpdateDomainRecords(n.network, n.domain, n.ip); err != nil {
 				log.Error(err)
 			}
 		}
@@ -234,8 +234,6 @@ func (n *Node) UpdateDomainIp() {
 }
 
 func (n *Node) IsBlock() bool {
-	addr := fmt.Sprintf("%s:%d", n.domain, n.port)
-
 	if delay, err := n.checkConnection(); err != nil {
 		var v *net.OpError
 		if errors.As(err, &v) && v.Addr != nil {
@@ -243,7 +241,7 @@ func (n *Node) IsBlock() bool {
 			return true
 		}
 	} else {
-		log.Infof("[%s] Tcping: %d ms", addr, delay)
+		log.Infof("[%s] Tcping: %d ms", n.domain, delay)
 	}
 	return false
 }
@@ -256,7 +254,7 @@ func (n *Node) SetNotifier(notify notify.Notify) {
 	n.notifier = notify
 }
 
-func (n *Node) SetDdnsClient(cli ddns.Client) {
+func (n *Node) SetDDNSClient(cli ddns.Client) {
 	n.ddnsClient = cli
 }
 

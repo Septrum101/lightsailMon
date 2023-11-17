@@ -47,7 +47,7 @@ func (s *Service) buildNodes(isNotify bool, isDDNS bool) []*node.Node {
 
 		// set ddns client
 		if isDDNS {
-			newNode.SetDdnsClient(ddnsCli)
+			newNode.SetDDNSClient(ddnsCli)
 		}
 
 		// set notifier

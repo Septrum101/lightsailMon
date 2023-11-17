@@ -83,7 +83,7 @@ func (s *Service) Close() {
 
 func (s *Service) Run() {
 	// check local network connection
-	resp, err := resty.New().SetRetryCount(3).R().Get("http://www.gstatic.com/generate_204")
+	resp, err := resty.New().SetRetryCount(3).R().Get("http://connectivitycheck.platform.hicloud.com/generate_204")
 	if err != nil {
 		log.Error(err)
 		return
