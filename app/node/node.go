@@ -167,10 +167,10 @@ func (n *Node) updateDomain() {
 func (n *Node) pushMessage(isDone bool) {
 	if n.notifier != nil {
 		if isDone {
-			if err := n.notifier.Webhook(n.domain, fmt.Sprintf("[%s] IP changed: %s", n.domain, n.ip)); err != nil {
+			if err := n.notifier.Webhook(n.domain, fmt.Sprintf("IP changed: %s", n.ip)); err != nil {
 				log.Error(err)
 			} else {
-				log.Infof("[%s:%d] Push message success", n.domain, n.port)
+				log.Infof("[%s] Push message success", n.domain)
 			}
 		} else {
 			if err := n.notifier.Webhook(n.domain, fmt.Sprintf("[%s] Connection block after IP refresh 3 times", n.domain)); err != nil {
