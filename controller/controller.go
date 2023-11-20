@@ -7,6 +7,7 @@ import (
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/service/lightsail"
 	"github.com/go-resty/resty/v2"
+	"github.com/panjf2000/ants/v2"
 	"github.com/robfig/cron/v3"
 	log "github.com/sirupsen/logrus"
 
@@ -100,22 +101,26 @@ func (s *Service) handler() {
 	var blockNodes []*node.Node
 	svcMap := make(map[*lightsail.Lightsail]bool)
 
+	p, _ := ants.NewPoolWithFunc(s.conf.Concurrent, func(i interface{}) {
+		defer s.wg.Done()
+
+		n := i.(*node.Node)
+		go n.UpdateDomainIp()
+		if n.IsBlock() {
+			s.Lock()
+			defer s.Unlock()
+			// add to blockNodes
+			blockNodes = append(blockNodes, n)
+			svcMap[n.GetSvc()] = true
+		}
+
+	})
+	defer p.Release()
+
 	// get block nodes
 	for i := range s.nodes {
-		s.workerAdd()
-
-		go func(n *node.Node) {
-			defer s.workerDone()
-
-			go n.UpdateDomainIp()
-			if n.IsBlock() {
-				s.Lock()
-				defer s.Unlock()
-				// add to blockNodes
-				blockNodes = append(blockNodes, n)
-				svcMap[n.GetSvc()] = true
-			}
-		}(s.nodes[i])
+		s.wg.Add(1)
+		p.Invoke(s.nodes[i])
 	}
 	s.wg.Wait()
 
@@ -133,14 +138,18 @@ func (s *Service) handler() {
 			}
 		}
 
+		p, _ := ants.NewPoolWithFunc(s.conf.Concurrent, func(i interface{}) {
+			defer s.wg.Done()
+
+			n := i.(*node.Node)
+			n.RenewIP()
+		})
+		defer p.Release()
+
 		// handle change block IP
 		for i := range blockNodes {
-			s.workerAdd()
-
-			go func(n *node.Node) {
-				defer s.workerDone()
-				n.RenewIP()
-			}(blockNodes[i])
+			s.wg.Add(1)
+			p.Invoke(blockNodes[i])
 		}
 		s.wg.Wait()
 
@@ -149,16 +158,6 @@ func (s *Service) handler() {
 			s.releaseStaticIps(svc)
 		}
 	}
-}
-
-func (s *Service) workerAdd() {
-	s.wg.Add(1)
-	s.worker <- 0
-}
-
-func (s *Service) workerDone() {
-	<-s.worker
-	s.wg.Done()
 }
 
 func (s *Service) releaseStaticIps(svc *lightsail.Lightsail) {

@@ -122,12 +122,12 @@ func (n *Node) RenewIP() {
 		switch n.network {
 		case "tcp4":
 			n.attachIP()
-			time.Sleep(time.Second * 5)
+			time.Sleep(time.Second * 3)
 			n.detachIP()
 			n.setNodeIP("ipv4")
 		case "tcp6":
 			n.disableDualStack()
-			time.Sleep(time.Second * 5)
+			time.Sleep(time.Second * 3)
 			n.enableDualStack()
 			n.setNodeIP("ipv6")
 		}
