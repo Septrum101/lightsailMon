@@ -7,7 +7,6 @@ import (
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/service/lightsail"
 	"github.com/go-resty/resty/v2"
-	"github.com/panjf2000/ants/v2"
 	"github.com/robfig/cron/v3"
 	log "github.com/sirupsen/logrus"
 
@@ -21,7 +20,7 @@ func New(c *config.Config) *Service {
 		cron:     cron.New(),
 		internal: c.Internal,
 		timeout:  c.Timeout,
-		worker:   make(chan uint8, c.Concurrent),
+		worker:   make(chan bool, c.Concurrent),
 	}
 
 	// init log level
@@ -83,7 +82,7 @@ func (s *Service) Close() {
 }
 
 func (s *Service) Run() {
-	// check local network connection
+	// check local network connectivity
 	resp, err := resty.New().SetRetryCount(3).R().Get("http://connectivitycheck.platform.hicloud.com/generate_204")
 	if err != nil {
 		log.Error(err)
@@ -94,28 +93,26 @@ func (s *Service) Run() {
 		return
 	}
 
-	s.handler()
+	s.changeNodeIps(s.getBlockNodes())
 }
 
-func (s *Service) handler() {
-	blockNodes, svcMap := s.getBlockNodes()
-
-	// change block nodes ip
+func (s *Service) changeNodeIps(blockNodes []*node.Node, svcMap map[*lightsail.Lightsail]bool) {
 	if len(blockNodes) > 0 {
 		s.allocateStaticIps(svcMap)
 
-		p, _ := ants.NewPoolWithFunc(s.conf.Concurrent, func(i interface{}) {
-			defer s.wg.Done()
-
-			n := i.(*node.Node)
-			n.RenewIP()
-		})
-		defer p.Release()
-
 		// handle change block IP
 		for i := range blockNodes {
+			s.worker <- true
 			s.wg.Add(1)
-			p.Invoke(blockNodes[i])
+
+			go func(n *node.Node) {
+				defer func() {
+					s.wg.Done()
+					<-s.worker
+				}()
+
+				n.RenewIP()
+			}(blockNodes[i])
 		}
 		s.wg.Wait()
 
@@ -144,26 +141,27 @@ func (s *Service) getBlockNodes() ([]*node.Node, map[*lightsail.Lightsail]bool) 
 	var blockNodes []*node.Node
 	svcMap := make(map[*lightsail.Lightsail]bool)
 
-	p, _ := ants.NewPoolWithFunc(s.conf.Concurrent, func(i interface{}) {
-		defer s.wg.Done()
-
-		n := i.(*node.Node)
-		go n.UpdateDomainIp()
-		if n.IsBlock() {
-			s.Lock()
-			defer s.Unlock()
-			// add to blockNodes
-			blockNodes = append(blockNodes, n)
-			svcMap[n.GetSvc()] = true
-		}
-
-	})
-	defer p.Release()
-
 	// get block nodes
 	for i := range s.nodes {
+		s.worker <- true
 		s.wg.Add(1)
-		p.Invoke(s.nodes[i])
+
+		go func(n *node.Node) {
+			defer func() {
+				s.wg.Done()
+				<-s.worker
+			}()
+
+			go n.UpdateDomainIp()
+			if n.IsBlock() {
+				s.Lock()
+				defer s.Unlock()
+				// add to blockNodes
+				blockNodes = append(blockNodes, n)
+				svcMap[n.GetSvc()] = true
+			}
+		}(s.nodes[i])
+
 	}
 	s.wg.Wait()
 

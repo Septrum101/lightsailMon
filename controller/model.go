@@ -19,5 +19,5 @@ type Service struct {
 	nodes    []*node.Node
 	cron     *cron.Cron
 	wg       sync.WaitGroup
-	worker   chan uint8
+	worker   chan bool
 }
