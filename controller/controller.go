@@ -98,6 +98,49 @@ func (s *Service) Run() {
 }
 
 func (s *Service) handler() {
+	blockNodes, svcMap := s.getBlockNodes()
+
+	// change block nodes ip
+	if len(blockNodes) > 0 {
+		s.allocateStaticIps(svcMap)
+
+		p, _ := ants.NewPoolWithFunc(s.conf.Concurrent, func(i interface{}) {
+			defer s.wg.Done()
+
+			n := i.(*node.Node)
+			n.RenewIP()
+		})
+		defer p.Release()
+
+		// handle change block IP
+		for i := range blockNodes {
+			s.wg.Add(1)
+			p.Invoke(blockNodes[i])
+		}
+		s.wg.Wait()
+
+		// release static IPs
+		for svc := range svcMap {
+			s.releaseStaticIps(svc)
+		}
+	}
+}
+
+// Release and Allocate Static Ip
+func (s *Service) allocateStaticIps(svcMap map[*lightsail.Lightsail]bool) {
+	for svc := range svcMap {
+		s.releaseStaticIps(svc)
+
+		log.Debugf("[Region: %s] Allocate region static IP", *svc.Config.Region)
+		if _, err := svc.AllocateStaticIp(&lightsail.AllocateStaticIpInput{
+			StaticIpName: aws.String("LightsailMon"),
+		}); err != nil {
+			log.Error(err)
+		}
+	}
+}
+
+func (s *Service) getBlockNodes() ([]*node.Node, map[*lightsail.Lightsail]bool) {
 	var blockNodes []*node.Node
 	svcMap := make(map[*lightsail.Lightsail]bool)
 
@@ -124,40 +167,7 @@ func (s *Service) handler() {
 	}
 	s.wg.Wait()
 
-	// change block nodes ip
-	if len(blockNodes) > 0 {
-		// Release and Allocate Static Ip
-		for svc := range svcMap {
-			s.releaseStaticIps(svc)
-
-			log.Debugf("[Region: %s] Allocate region static IP", *svc.Config.Region)
-			if _, err := svc.AllocateStaticIp(&lightsail.AllocateStaticIpInput{
-				StaticIpName: aws.String("LightsailMon"),
-			}); err != nil {
-				log.Error(err)
-			}
-		}
-
-		p, _ := ants.NewPoolWithFunc(s.conf.Concurrent, func(i interface{}) {
-			defer s.wg.Done()
-
-			n := i.(*node.Node)
-			n.RenewIP()
-		})
-		defer p.Release()
-
-		// handle change block IP
-		for i := range blockNodes {
-			s.wg.Add(1)
-			p.Invoke(blockNodes[i])
-		}
-		s.wg.Wait()
-
-		// release static IPs
-		for svc := range svcMap {
-			s.releaseStaticIps(svc)
-		}
-	}
+	return blockNodes, svcMap
 }
 
 func (s *Service) releaseStaticIps(svc *lightsail.Lightsail) {
