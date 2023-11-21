@@ -3,6 +3,7 @@ package controller
 import (
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/service/lightsail"
@@ -83,16 +84,18 @@ func (s *Service) Close() {
 
 func (s *Service) Run() {
 	// check local network connectivity
+	start := time.Now()
 	resp, err := resty.New().SetRetryCount(3).R().Get("http://connectivitycheck.platform.hicloud.com/generate_204")
 	if err != nil {
 		log.Error(err)
 		return
 	}
+	delay := time.Since(start)
 	if resp.StatusCode() != 204 {
 		log.Error(resp.String())
 		return
 	}
-
+	log.Infof("[Local_Network] Tcping: %d ms", delay.Milliseconds())
 	s.changeNodeIps(s.getBlockNodes())
 }
 
