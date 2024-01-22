@@ -1,7 +1,7 @@
 github.com/aws/aws-sdk-go v1.49.21 h1:Rl8KW6HqkwzhATwvXhyr7vD4JFUMi7oXGAw9SrxxIFY=
 github.com/aws/aws-sdk-go v1.49.21/go.mod h1:LF8svs817+Nz+DmiMQKTO3ubZ/6IaTpq3TjupRn3Eqk=
-github.com/cloudflare/cloudflare-go v0.85.0 h1:GO5Alu5ldNdPyh5i9VSSM5ZdjL57u76Y4HNmwKKyHmA=
-github.com/cloudflare/cloudflare-go v0.85.0/go.mod h1:Cj+RG+ceGsRexXYLRydfTB7pjODi3YO5KeG6vnLV2cA=
+github.com/cloudflare/cloudflare-go v0.86.0 h1:jEKN5VHNYNYtfDL2lUFLTRo+nOVNPFxpXTstVx0rqHI=
+github.com/cloudflare/cloudflare-go v0.86.0/go.mod h1:wYW/5UP02TUfBToa/yKbQHV+r6h1NnJ1Je7XjuGM4Jw=
 github.com/davecgh/go-spew v1.1.0/go.mod h1:J7Y8YcW2NihsgmVo/mv3lAwl/skON4iLHjSsI+c5H38=
 github.com/davecgh/go-spew v1.1.1/go.mod h1:J7Y8YcW2NihsgmVo/mv3lAwl/skON4iLHjSsI+c5H38=
 github.com/davecgh/go-spew v1.1.2-0.20180830191138-d8f796af33cc h1:U9qPSI2PIWSS1VwoXQT9A3Wy9MM3WgvqSxFWenqJduM=
