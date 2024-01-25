@@ -8,6 +8,8 @@ import (
 	"github.com/thank243/lightsailMon/common/ddns/cloudflare"
 	"github.com/thank243/lightsailMon/common/ddns/google"
 	"github.com/thank243/lightsailMon/common/notify"
+	"github.com/thank243/lightsailMon/common/notify/pushplus"
+	"github.com/thank243/lightsailMon/common/notify/telegram"
 )
 
 func (s *Service) buildNodes(isNotify bool, isDDNS bool) []*node.Node {
@@ -16,9 +18,9 @@ func (s *Service) buildNodes(isNotify bool, isDDNS bool) []*node.Node {
 	if isNotify {
 		switch s.conf.Notify.Provider {
 		case "pushplus":
-			notifier = &notify.PushPlus{Token: s.conf.Notify.Config["pushplus_token"].(string)}
+			notifier = &pushplus.PushPlus{Token: s.conf.Notify.Config["pushplus_token"].(string)}
 		case "telegram":
-			notifier = &notify.Telegram{
+			notifier = &telegram.Telegram{
 				ChatID: int64(s.conf.Notify.Config["telegram_chatid"].(int)),
 				Token:  s.conf.Notify.Config["telegram_token"].(string),
 			}

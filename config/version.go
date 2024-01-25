@@ -11,5 +11,5 @@ var (
 )
 
 func ShowVersion() {
-	fmt.Printf("%s %s (%s) \n", AppName, Version, Intro)
+	fmt.Printf("%s %s\n%s\n", AppName, Version, Intro)
 }

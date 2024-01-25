@@ -1,4 +1,4 @@
-package notify
+package pushplus
 
 import (
 	"fmt"
@@ -6,18 +6,8 @@ import (
 	"github.com/go-resty/resty/v2"
 )
 
-type PushPlus struct {
-	Token string
-}
-
 func (p *PushPlus) Webhook(title string, content string) error {
-	type pushPlusResp struct {
-		Code int    `json:"code"`
-		Msg  string `json:"msg"`
-		Data string `json:"data"`
-	}
 	api := "https://www.pushplus.plus/send/"
-
 	rtn := &pushPlusResp{}
 	resp, err := resty.New().SetRetryCount(3).R().SetResult(rtn).SetBody(map[string]string{
 		"token":   p.Token,
@@ -30,7 +20,7 @@ func (p *PushPlus) Webhook(title string, content string) error {
 
 	switch rtn.Code {
 	case 0:
-		return fmt.Errorf("[PushPlus] %v", resp.String())
+		return fmt.Errorf("[PushPlus] %s", resp.String())
 	case 200:
 		return nil
 	default:

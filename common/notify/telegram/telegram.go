@@ -1,4 +1,4 @@
-package notify
+package telegram
 
 import (
 	"fmt"
@@ -7,11 +7,6 @@ import (
 	tg "github.com/go-telegram-bot-api/telegram-bot-api/v5"
 	log "github.com/sirupsen/logrus"
 )
-
-type Telegram struct {
-	ChatID int64
-	Token  string
-}
 
 func (t *Telegram) Webhook(title string, content string) error {
 	log.SetLevel(log.DebugLevel)

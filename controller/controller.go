@@ -42,7 +42,7 @@ func New(c *config.Config) *Service {
 	if isNotify {
 		notifierStatus = strings.Title(c.Notify.Provider)
 	}
-	fmt.Printf("Log level: %s  (Concurrent: %d, DDNS: %s, Notifier: %s)\n", c.LogLevel, c.Concurrent,
+	fmt.Printf("Log level: %s, Concurrent: %d, DDNS: %s, Notifier: %s\n", c.LogLevel, c.Concurrent,
 		ddnsStatus, notifierStatus)
 
 	nodes := s.buildNodes(isNotify, isDDNS)

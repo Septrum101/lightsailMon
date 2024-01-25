@@ -2,10 +2,13 @@ package notify
 
 import (
 	"testing"
+
+	"github.com/thank243/lightsailMon/common/notify/pushplus"
+	"github.com/thank243/lightsailMon/common/notify/telegram"
 )
 
 func TestTelegram_Webhook(t *testing.T) {
-	tg := Telegram{
+	tg := telegram.Telegram{
 		ChatID: 123,
 		Token:  "YOUR_TOKEN",
 	}
@@ -17,7 +20,7 @@ func TestTelegram_Webhook(t *testing.T) {
 }
 
 func TestPushPlus_Webhook(t *testing.T) {
-	pp := PushPlus{Token: "YOUR_TOKEN"}
+	pp := pushplus.PushPlus{Token: "YOUR_TOKEN"}
 	err := pp.Webhook("node1.test.com", "This is test message")
 	if err != nil {
 		t.Error(err)
