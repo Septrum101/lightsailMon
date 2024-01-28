@@ -10,14 +10,13 @@ import (
 )
 
 type Service struct {
-	sync.RWMutex
+	conf  *config.Config
+	nodes []*node.Node
+	cron  *cron.Cron
+	wg    sync.WaitGroup
 
-	conf     *config.Config
 	running  bool
 	internal int
 	timeout  int
-	nodes    []*node.Node
-	cron     *cron.Cron
-	wg       sync.WaitGroup
 	worker   chan bool
 }

@@ -7,7 +7,6 @@ import (
 	"time"
 
 	"github.com/cloudflare/cloudflare-go"
-	log "github.com/sirupsen/logrus"
 	"golang.org/x/net/context"
 )
 
@@ -56,7 +55,7 @@ func (cf *Cloudflare) addUpdateDomainRecords(recordType string, domain string, i
 	if len(records) > 0 {
 		for i := range records {
 			if records[i].Content == ipAddr {
-				return fmt.Errorf("[%s] IP %s have no change", domain, ipAddr)
+				return fmt.Errorf("ip %s have no change", ipAddr)
 			}
 			_, err = cf.client.UpdateDNSRecord(ctx, cloudflare.ZoneIdentifier(zoneID), cloudflare.UpdateDNSRecordParams{
 				Type:    recordType,
@@ -64,9 +63,8 @@ func (cf *Cloudflare) addUpdateDomainRecords(recordType string, domain string, i
 				Content: ipAddr,
 			})
 			if err != nil {
-				return fmt.Errorf("[%s] update record failure, Error: %s", domain, err)
+				return fmt.Errorf("update record failure, Error: %s", err)
 			}
-			log.Printf("[%s] update record success, IP: %s", domain, ipAddr)
 		}
 	} else {
 		_, err := cf.client.CreateDNSRecord(ctx, cloudflare.ZoneIdentifier(zoneID), cloudflare.CreateDNSRecordParams{
@@ -75,9 +73,8 @@ func (cf *Cloudflare) addUpdateDomainRecords(recordType string, domain string, i
 			Content: ipAddr,
 		})
 		if err != nil {
-			return fmt.Errorf("[%s] create record failure, Error: %s", domain, err)
+			return fmt.Errorf("create record failure, Error: %s", err)
 		}
-		log.Printf("[%s] create record success, IP: %s", domain, ipAddr)
 	}
 	return nil
 }
@@ -114,7 +111,6 @@ func (cf *Cloudflare) GetDomainRecords(recordType string, domain string) (domain
 	ctx := context.Background()
 	_, records, err := cf.getRecords(ctx, recordType, domain)
 	if err != nil {
-		log.Error(err)
 		return nil, err
 	}
 

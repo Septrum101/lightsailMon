@@ -29,6 +29,9 @@ func New(c *config.Config) *Service {
 		log.Panic(err)
 	} else {
 		log.SetLevel(l)
+		if l == log.DebugLevel {
+			log.SetReportCaller(true)
+		}
 	}
 
 	isNotify := c.Notify != nil && c.Notify.Enable
@@ -95,12 +98,18 @@ func (s *Service) Run() {
 		log.Error(resp.String())
 		return
 	}
-	log.WithField("domian", "connectivity").Infof("Tcping: %d ms", delay.Milliseconds())
+	log.WithField("domian", "local.network.connectivity").Infof("Tcping: %d ms", delay.Milliseconds())
 	s.changeNodeIps(s.getBlockNodes())
 }
 
-func (s *Service) changeNodeIps(blockNodes []*node.Node, svcMap map[*lightsail.Lightsail]bool) {
+func (s *Service) changeNodeIps(blockNodes []*node.Node) {
 	if len(blockNodes) > 0 {
+		// get blocked node lightsail service
+		svcMap := make(map[*lightsail.Lightsail]bool)
+		for _, node := range blockNodes {
+			svcMap[node.GetSvc()] = true
+		}
+
 		s.allocateStaticIps(svcMap)
 
 		// handle change block IP
@@ -131,7 +140,7 @@ func (s *Service) allocateStaticIps(svcMap map[*lightsail.Lightsail]bool) {
 	for svc := range svcMap {
 		s.releaseStaticIps(svc)
 
-		log.Debugf("[Region: %s] Allocate region static IP", *svc.Config.Region)
+		log.WithField("region", *svc.Config.Region).Debug("Allocate region static IP")
 		if _, err := svc.AllocateStaticIp(&lightsail.AllocateStaticIpInput{
 			StaticIpName: aws.String("LightsailMon"),
 		}); err != nil {
@@ -140,39 +149,52 @@ func (s *Service) allocateStaticIps(svcMap map[*lightsail.Lightsail]bool) {
 	}
 }
 
-func (s *Service) getBlockNodes() ([]*node.Node, map[*lightsail.Lightsail]bool) {
-	var blockNodes []*node.Node
-	svcMap := make(map[*lightsail.Lightsail]bool)
+func (s *Service) getBlockNodes() []*node.Node {
+	nodesChan := make(chan *node.Node)
 
 	// get block nodes
 	for i := range s.nodes {
 		s.worker <- true
 		s.wg.Add(1)
 
-		go func(n *node.Node) {
+		go func(i int) {
 			defer func() {
 				s.wg.Done()
 				<-s.worker
 			}()
 
-			go n.UpdateDomainIp()
+			n := s.nodes[i]
+
+			go func() {
+				if err := n.UpdateDomainIp(); err != nil {
+					n.GetLogger().Errorf("Failed to update domain IP: %v", err)
+				}
+			}()
+
 			if n.IsBlock() {
-				s.Lock()
-				defer s.Unlock()
-				// add to blockNodes
-				blockNodes = append(blockNodes, n)
-				svcMap[n.GetSvc()] = true
+				// add to blockNodes channel
+				nodesChan <- n
 			}
-		}(s.nodes[i])
-
+		}(i)
 	}
-	s.wg.Wait()
 
-	return blockNodes, svcMap
+	// wait after all node is checked
+	go func() {
+		s.wg.Wait()
+		close(nodesChan)
+	}()
+
+	// read blocked nodes from channel
+	var blockedNodes []*node.Node
+	for n := range nodesChan {
+		blockedNodes = append(blockedNodes, n)
+	}
+
+	return blockedNodes
 }
 
 func (s *Service) releaseStaticIps(svc *lightsail.Lightsail) {
-	log.Debugf("[Region: %s] Release region static IPs", *svc.Config.Region)
+	log.WithField("region", *svc.Config.Region).Debug("Release region static IPs")
 	if ips, err := svc.GetStaticIps(&lightsail.GetStaticIpsInput{}); err != nil {
 		log.Error(err)
 	} else {

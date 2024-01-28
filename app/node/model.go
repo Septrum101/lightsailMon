@@ -12,13 +12,14 @@ import (
 
 type Node struct {
 	svc        *lightsail.Lightsail
-	name       string
-	network    string
-	ip         string
-	port       int
-	domain     string
 	timeout    time.Duration
 	ddnsClient ddns.Client
 	notifier   notify.Notify
 	logger     *logrus.Entry
+
+	name    string
+	network string
+	ip      string
+	port    int
+	domain  string
 }

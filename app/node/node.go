@@ -103,8 +103,8 @@ func (n *Node) enableDualStack() {
 	}
 }
 
-// setNodeIP is a helper function to update instance IP address
-func (n *Node) setNodeIP(ipType string) {
+// setIp is a helper function to update instance IP address
+func (n *Node) setIp(ipType string) {
 	inst, err := n.svc.GetInstance(&lightsail.GetInstanceInput{InstanceName: aws.String(n.name)})
 	if err != nil {
 		n.logger.Error(err)
@@ -120,19 +120,19 @@ func (n *Node) setNodeIP(ipType string) {
 
 func (n *Node) RenewIP() {
 	n.logger.Warn("Change node IP")
-	isDone := false
+	isSuccess := false
 	for i := 0; i < 3; i++ {
 		switch n.network {
 		case "tcp4":
 			n.attachIP()
 			time.Sleep(time.Second * 3)
 			n.detachIP()
-			n.setNodeIP("ipv4")
+			n.setIp("ipv4")
 		case "tcp6":
 			n.disableDualStack()
 			time.Sleep(time.Second * 3)
 			n.enableDualStack()
-			n.setNodeIP("ipv6")
+			n.setIp("ipv6")
 		}
 
 		// check again connection
@@ -140,49 +140,58 @@ func (n *Node) RenewIP() {
 			n.logger.Errorf("Renew IP post check: %v attempt retry.. (%d/3)", err, i+1)
 		} else {
 			n.logger.Info("Renew IP post check: success")
-			isDone = true
+			isSuccess = true
 			break
 		}
 	}
 
-	n.pushMessage(isDone)
-	n.updateDomain()
+	if err := n.pushMessage(isSuccess); err != nil {
+		n.logger.Error(err)
+	} else {
+		n.logger.Info("Push message success")
+	}
+
+	if err := n.updateDomain(); err != nil {
+		n.logger.Info(err)
+	}
 }
 
 // Update domain record
-func (n *Node) updateDomain() {
-	if n.ddnsClient != nil {
-		for i := 0; i < 3; i++ {
-			if err := n.ddnsClient.AddUpdateDomainRecords(n.network, n.domain, n.ip); err != nil {
-				n.logger.Error(err)
-				if i == 2 {
-					return
-				}
-				time.Sleep(time.Second * 5)
-			} else {
-				return
-			}
-		}
+func (n *Node) updateDomain() error {
+	if n.ddnsClient == nil {
+		return errors.New("ddns client is null")
 	}
+
+	var err error
+	for i := 0; i < 3; i++ {
+		if err = n.ddnsClient.AddUpdateDomainRecords(n.network, n.domain, n.ip); err != nil {
+			time.Sleep(time.Second * 5)
+			continue
+		}
+
+		return nil
+	}
+
+	return err
 }
 
 // push message
-func (n *Node) pushMessage(isDone bool) {
-	if n.notifier != nil {
-		if isDone {
-			if err := n.notifier.Webhook(n.domain, fmt.Sprintf("IP changed: %s", n.ip)); err != nil {
-				n.logger.Error(err)
-			} else {
-				n.logger.Info("Push message success")
-			}
-		} else {
-			if err := n.notifier.Webhook(n.domain, fmt.Sprintf("[%s] Connection block after IP refresh 3 times", n.domain)); err != nil {
-				n.logger.Error(err)
-			} else {
-				n.logger.Infof("Push message success")
-			}
+func (n *Node) pushMessage(isSuccess bool) error {
+	if n.notifier == nil {
+		return errors.New("notifier is null")
+	}
+
+	if isSuccess {
+		if err := n.notifier.Webhook(n.domain, fmt.Sprintf("IP changed: %s", n.ip)); err != nil {
+			return err
+		}
+	} else {
+		if err := n.notifier.Webhook(n.domain, fmt.Sprintf("[%s] Connection block after IP refresh 3 times", n.domain)); err != nil {
+			return err
 		}
 	}
+
+	return nil
 }
 
 func (n *Node) checkConnection() (int64, error) {
@@ -210,30 +219,34 @@ func (n *Node) checkConnection() (int64, error) {
 	return 0, err
 }
 
-func (n *Node) UpdateDomainIp() {
-	// check domain sync with ip
-	if n.ddnsClient != nil {
-		var (
-			domainIps map[string]bool
-			err       error
-		)
-		switch n.network {
-		case "tcp4":
-			domainIps, err = n.ddnsClient.GetDomainRecords("A", n.domain)
-		case "tcp6":
-			domainIps, err = n.ddnsClient.GetDomainRecords("AAAA", n.domain)
-		}
-		if err != nil {
-			n.logger.Error(err)
-			return
-		}
+func (n *Node) UpdateDomainIp() error {
+	if n.ddnsClient == nil {
+		return errors.New("ddns client is null")
+	}
 
-		if _, ok := domainIps[n.ip]; !ok {
-			if err := n.ddnsClient.AddUpdateDomainRecords(n.network, n.domain, n.ip); err != nil {
-				n.logger.Error(err)
-			}
+	// check domain sync with ip
+	var (
+		domainIps map[string]bool
+		err       error
+	)
+
+	switch n.network {
+	case "tcp4":
+		domainIps, err = n.ddnsClient.GetDomainRecords("A", n.domain)
+	case "tcp6":
+		domainIps, err = n.ddnsClient.GetDomainRecords("AAAA", n.domain)
+	}
+	if err != nil {
+		return err
+	}
+
+	if _, ok := domainIps[n.ip]; !ok {
+		if err := n.ddnsClient.AddUpdateDomainRecords(n.network, n.domain, n.ip); err != nil {
+			return err
 		}
 	}
+
+	return nil
 }
 
 func (n *Node) IsBlock() bool {
@@ -261,10 +274,10 @@ func (n *Node) SetDDNSClient(cli ddns.Client) {
 	n.ddnsClient = cli
 }
 
-func (n *Node) Domain() string {
-	return n.domain
-}
-
 func (n *Node) GetSvc() *lightsail.Lightsail {
 	return n.svc
+}
+
+func (n *Node) GetLogger() *logrus.Entry {
+	return n.logger
 }
