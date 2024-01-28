@@ -11,7 +11,7 @@ import (
 	"github.com/aws/aws-sdk-go/aws/credentials"
 	"github.com/aws/aws-sdk-go/aws/session"
 	"github.com/aws/aws-sdk-go/service/lightsail"
-	log "github.com/sirupsen/logrus"
+	"github.com/sirupsen/logrus"
 
 	"github.com/thank243/lightsailMon/common/ddns"
 	"github.com/thank243/lightsailMon/common/notify"
@@ -19,6 +19,11 @@ import (
 )
 
 func New(configNode *config.Node) *Node {
+	n := new(Node)
+	n.logger = logrus.WithFields(map[string]interface{}{
+		"domain": configNode.Domain,
+	})
+
 	// create account session
 	sess, err := session.NewSession(&aws.Config{
 		Credentials: credentials.NewStaticCredentials(
@@ -28,75 +33,73 @@ func New(configNode *config.Node) *Node {
 		),
 	})
 	if err != nil {
-		log.Panic(err)
+		n.logger.Panic(err)
 	}
 
 	// init node
-	node := &Node{
-		svc:     lightsail.New(sess, aws.NewConfig().WithRegion(configNode.Region)),
-		name:    configNode.InstanceName,
-		network: configNode.Network,
-		domain:  configNode.Domain,
-		port:    configNode.Port,
-		timeout: time.Second * 5,
-	}
+	n.svc = lightsail.New(sess, aws.NewConfig().WithRegion(configNode.Region))
+	n.name = configNode.InstanceName
+	n.network = configNode.Network
+	n.domain = configNode.Domain
+	n.port = configNode.Port
+	n.timeout = time.Second * 5
 
 	// Get lightsail instance IP and sync to domain
-	inst, err := node.svc.GetInstance(&lightsail.GetInstanceInput{InstanceName: aws.String(node.name)})
+	inst, err := n.svc.GetInstance(&lightsail.GetInstanceInput{InstanceName: aws.String(n.name)})
 	if err != nil {
-		log.Error(err)
+		n.logger.Error(err)
 	} else {
-		switch node.network {
+		switch n.network {
 		case "tcp4":
-			node.ip = aws.StringValue(inst.Instance.PublicIpAddress)
+			n.ip = aws.StringValue(inst.Instance.PublicIpAddress)
 		case "tcp6":
-			node.ip = aws.StringValue(inst.Instance.Ipv6Addresses[0])
+			n.ip = aws.StringValue(inst.Instance.Ipv6Addresses[0])
 		}
 	}
 
-	return node
+	return n
 }
 
 // attachIP is a helper function to attach static IP to instance
 func (n *Node) attachIP() {
-	log.Debugf("[%s] Attach static IP", n.domain)
+	n.logger.Debug("Attach static IP")
 	if _, err := n.svc.AttachStaticIp(&lightsail.AttachStaticIpInput{
 		InstanceName: aws.String(n.name),
 		StaticIpName: aws.String("LightsailMon"),
 	}); err != nil {
-		log.Error(err)
+		n.logger.Error(err)
 	}
 }
 
 // detachIP is a helper function to detach static IP from instance
 func (n *Node) detachIP() {
-	log.Debugf("[%s] Detach static IP", n.domain)
+	n.logger.Debug("Detach static IP")
 	if _, err := n.svc.DetachStaticIp(&lightsail.DetachStaticIpInput{
 		StaticIpName: aws.String("LightsailMon"),
 	}); err != nil {
-		log.Error(err)
+		n.logger.Error(err)
 	}
 }
 
 // disableDualStack is a helper function to disable dual stack network
 func (n *Node) disableDualStack() {
-	log.Debugf("[%s] Disable dual-stack network", n.domain)
+	n.logger.Debug("Disable dual-stack network")
 	if _, err := n.svc.SetIpAddressTypeRequest(&lightsail.SetIpAddressTypeInput{
 		IpAddressType: aws.String("ipv4"),
 		ResourceName:  aws.String(n.name),
 	}); err != nil {
-		log.Error(err)
+		n.logger.Error(err)
 	}
 }
 
 // enableDualStack is a helper function to enable dual stack network
 func (n *Node) enableDualStack() {
-	log.Debugf("[%s] Enable dual-stack network", n.domain)
+	n.logger.Debug("Enable dual-stack network")
 	if _, err := n.svc.SetIpAddressTypeRequest(&lightsail.SetIpAddressTypeInput{
 		IpAddressType: aws.String("dualstack"),
 		ResourceName:  aws.String(n.name),
 	}); err != nil {
-		log.Error(err)
+		n.logger.Error(err)
 	}
 }
 
@@ -104,7 +107,7 @@ func (n *Node) enableDualStack() {
 func (n *Node) setNodeIP(ipType string) {
 	inst, err := n.svc.GetInstance(&lightsail.GetInstanceInput{InstanceName: aws.String(n.name)})
 	if err != nil {
-		log.Error(err)
+		n.logger.Error(err)
 	}
 
 	switch ipType {
@@ -116,7 +119,7 @@ func (n *Node) setNodeIP(ipType string) {
 }
 
 func (n *Node) RenewIP() {
-	log.Warnf("[%s] Change node IP", n.domain)
+	n.logger.Warn("Change node IP")
 	isDone := false
 	for i := 0; i < 3; i++ {
 		switch n.network {
@@ -134,9 +137,9 @@ func (n *Node) RenewIP() {
 
 		// check again connection
 		if _, err := n.checkConnection(); err != nil {
-			log.Errorf("[%s] Renew IP post check: %v attempt retry.. (%d/3)", n.domain, err, i+1)
+			n.logger.Errorf("Renew IP post check: %v attempt retry.. (%d/3)", err, i+1)
 		} else {
-			log.Infof("[%s] Renew IP post check: success", n.domain)
+			n.logger.Info("Renew IP post check: success")
 			isDone = true
 			break
 		}
@@ -151,7 +154,7 @@ func (n *Node) updateDomain() {
 	if n.ddnsClient != nil {
 		for i := 0; i < 3; i++ {
 			if err := n.ddnsClient.AddUpdateDomainRecords(n.network, n.domain, n.ip); err != nil {
-				log.Error(err)
+				n.logger.Error(err)
 				if i == 2 {
 					return
 				}
@@ -168,15 +171,15 @@ func (n *Node) pushMessage(isDone bool) {
 	if n.notifier != nil {
 		if isDone {
 			if err := n.notifier.Webhook(n.domain, fmt.Sprintf("IP changed: %s", n.ip)); err != nil {
-				log.Error(err)
+				n.logger.Error(err)
 			} else {
-				log.Infof("[%s] Push message success", n.domain)
+				n.logger.Info("Push message success")
 			}
 		} else {
 			if err := n.notifier.Webhook(n.domain, fmt.Sprintf("[%s] Connection block after IP refresh 3 times", n.domain)); err != nil {
-				log.Error(err)
+				n.logger.Error(err)
 			} else {
-				log.Infof("[%s] Push message success", n.domain)
+				n.logger.Infof("Push message success")
 			}
 		}
 	}
@@ -196,7 +199,7 @@ func (n *Node) checkConnection() (int64, error) {
 		start := time.Now()
 		conn, err = net.DialTimeout(n.network, n.ip+":"+strconv.Itoa(n.port), n.timeout)
 		if err != nil {
-			log.Debugf("%v attempt retry.. (%d/3)", err, i+1)
+			n.logger.Debugf("%v attempt retry.. (%d/3)", err, i+1)
 		} else {
 			conn.Close()
 			return time.Since(start).Milliseconds(), nil
@@ -221,13 +224,13 @@ func (n *Node) UpdateDomainIp() {
 			domainIps, err = n.ddnsClient.GetDomainRecords("AAAA", n.domain)
 		}
 		if err != nil {
-			log.Error(err)
+			n.logger.Error(err)
 			return
 		}
 
 		if _, ok := domainIps[n.ip]; !ok {
 			if err := n.ddnsClient.AddUpdateDomainRecords(n.network, n.domain, n.ip); err != nil {
-				log.Error(err)
+				n.logger.Error(err)
 			}
 		}
 	}
@@ -237,11 +240,11 @@ func (n *Node) IsBlock() bool {
 	if delay, err := n.checkConnection(); err != nil {
 		var v *net.OpError
 		if errors.As(err, &v) && v.Addr != nil {
-			log.Errorf("[%s] %v", n.domain, err)
+			n.logger.Error(err)
 			return true
 		}
 	} else {
-		log.Infof("[%s] Tcping: %d ms", n.domain, delay)
+		n.logger.Infof("Tcping: %d ms", delay)
 	}
 	return false
 }

@@ -95,7 +95,7 @@ func (s *Service) Run() {
 		log.Error(resp.String())
 		return
 	}
-	log.Infof("[Local_Network] Tcping: %d ms", delay.Milliseconds())
+	log.WithField("domian", "connectivity").Infof("Tcping: %d ms", delay.Milliseconds())
 	s.changeNodeIps(s.getBlockNodes())
 }
 
