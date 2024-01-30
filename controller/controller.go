@@ -159,8 +159,8 @@ func (s *Service) getBlockNodes() []*node.Node {
 
 		go func(i int) {
 			defer func() {
-				s.wg.Done()
 				<-s.worker
+				s.wg.Done()
 			}()
 
 			n := s.nodes[i]

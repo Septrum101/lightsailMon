@@ -19,10 +19,16 @@ import (
 )
 
 func New(configNode *config.Node) *Node {
-	n := new(Node)
-	n.logger = logrus.WithFields(map[string]interface{}{
-		"domain": configNode.Domain,
-	})
+	n := &Node{
+		timeout: time.Second * 5,
+		logger: logrus.WithFields(map[string]interface{}{
+			"domain": configNode.Domain,
+		}),
+		name:    configNode.InstanceName,
+		network: configNode.Network,
+		port:    configNode.Port,
+		domain:  configNode.Domain,
+	}
 
 	// create account session
 	sess, err := session.NewSession(&aws.Config{
@@ -35,14 +41,7 @@ func New(configNode *config.Node) *Node {
 	if err != nil {
 		n.logger.Panic(err)
 	}
-
-	// init node
 	n.svc = lightsail.New(sess, aws.NewConfig().WithRegion(configNode.Region))
-	n.name = configNode.InstanceName
-	n.network = configNode.Network
-	n.domain = configNode.Domain
-	n.port = configNode.Port
-	n.timeout = time.Second * 5
 
 	// Get lightsail instance IP and sync to domain
 	inst, err := n.svc.GetInstance(&lightsail.GetInstanceInput{InstanceName: aws.String(n.name)})
@@ -195,28 +194,18 @@ func (n *Node) pushMessage(isSuccess bool) error {
 }
 
 func (n *Node) checkConnection() (int64, error) {
-	var (
-		conn net.Conn
-		err  error
-	)
-
+	addr := n.ip
 	if n.network == "tcp6" {
-		n.ip = "[" + n.ip + "]"
+		addr = "[" + n.ip + "]"
 	}
 
-	for i := 0; i < 3; i++ {
-		start := time.Now()
-		conn, err = net.DialTimeout(n.network, n.ip+":"+strconv.Itoa(n.port), n.timeout)
-		if err != nil {
-			n.logger.Debugf("%v attempt retry.. (%d/3)", err, i+1)
-		} else {
-			conn.Close()
-			return time.Since(start).Milliseconds(), nil
-		}
-		time.Sleep(time.Second * 5)
+	d, conn, err := dialWithRetry(n.network, addr+":"+strconv.Itoa(n.port), n.timeout, 3, 5*time.Second)
+	if err != nil {
+		return 0, err
 	}
+	defer conn.Close()
 
-	return 0, err
+	return d, err
 }
 
 func (n *Node) UpdateDomainIp() error {
@@ -250,15 +239,18 @@ func (n *Node) UpdateDomainIp() error {
 }
 
 func (n *Node) IsBlock() bool {
-	if delay, err := n.checkConnection(); err != nil {
+	delay, err := n.checkConnection()
+	if err != nil {
 		var v *net.OpError
 		if errors.As(err, &v) && v.Addr != nil {
-			n.logger.Error(err)
+			n.logger.Errorf("after 3 attempts, last error: %s", err)
 			return true
 		}
-	} else {
-		n.logger.Infof("Tcping: %d ms", delay)
+		n.logger.Errorf("after 3 attempts, last error: %s", err)
+		return false
 	}
+
+	n.logger.Infof("Tcping: %d ms", delay)
 	return false
 }
 
@@ -280,4 +272,22 @@ func (n *Node) GetSvc() *lightsail.Lightsail {
 
 func (n *Node) GetLogger() *logrus.Entry {
 	return n.logger
+}
+
+func dialWithRetry(network, address string, timeout time.Duration, maxRetries int, delay time.Duration) (int64, net.Conn, error) {
+	var err error
+	var conn net.Conn
+
+	for i := 0; i < maxRetries; i++ {
+		start := time.Now()
+		conn, err = net.DialTimeout(network, address, timeout)
+		if err == nil {
+			return time.Since(start).Milliseconds(), conn, nil
+		}
+
+		// sleep for a while before trying again
+		time.Sleep(delay)
+	}
+
+	return 0, nil, err
 }
