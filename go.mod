@@ -3,8 +3,8 @@ module github.com/thank243/lightsailMon
 go 1.20
 
 require (
-	github.com/aws/aws-sdk-go v1.50.5
-	github.com/cloudflare/cloudflare-go v0.86.0
+	github.com/aws/aws-sdk-go v1.50.11
+	github.com/cloudflare/cloudflare-go v0.87.0
 	github.com/fsnotify/fsnotify v1.7.0
 	github.com/go-resty/resty/v2 v2.11.0
 	github.com/go-telegram-bot-api/telegram-bot-api/v5 v5.5.1
@@ -32,7 +32,7 @@ require (
 	github.com/spf13/pflag v1.0.5 // indirect
 	github.com/subosito/gotenv v1.6.0 // indirect
 	go.uber.org/multierr v1.11.0 // indirect
-	golang.org/x/exp v0.0.0-20240119083558-1b970713d09a // indirect
+	golang.org/x/exp v0.0.0-20240205201215-2c58cdc269a3 // indirect
 	golang.org/x/sys v0.16.0 // indirect
 	golang.org/x/text v0.14.0 // indirect
 	golang.org/x/time v0.5.0 // indirect
