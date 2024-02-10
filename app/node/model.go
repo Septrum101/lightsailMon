@@ -11,11 +11,11 @@ import (
 )
 
 type Node struct {
-	svc        *lightsail.Lightsail
-	timeout    time.Duration
-	ddnsClient ddns.Client
-	notifier   notify.Notify
-	logger     *logrus.Entry
+	Svc        *lightsail.Lightsail
+	Timeout    time.Duration
+	DdnsClient ddns.Client
+	Notifier   notify.Notify
+	Logger     *logrus.Entry
 
 	name    string
 	network string

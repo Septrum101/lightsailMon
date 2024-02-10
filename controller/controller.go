@@ -107,7 +107,7 @@ func (s *Service) changeNodeIps(blockNodes []*node.Node) {
 		// get blocked node lightsail service
 		svcMap := make(map[*lightsail.Lightsail]bool)
 		for _, node := range blockNodes {
-			svcMap[node.GetSvc()] = true
+			svcMap[node.Svc] = true
 		}
 
 		s.allocateStaticIps(svcMap)
@@ -167,7 +167,7 @@ func (s *Service) getBlockNodes() []*node.Node {
 
 			go func() {
 				if err := n.UpdateDomainIp(); err != nil {
-					n.GetLogger().Errorf("Failed to update domain IP: %v", err)
+					n.Logger.Errorf("Failed to update domain IP: %v", err)
 				}
 			}()
 
