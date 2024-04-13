@@ -1,7 +1,10 @@
 package controller
 
 import (
+	"context"
 	"fmt"
+	"net"
+	"net/http"
 	"strings"
 	"time"
 
@@ -11,8 +14,8 @@ import (
 	"github.com/robfig/cron/v3"
 	log "github.com/sirupsen/logrus"
 
-	"github.com/thank243/lightsailMon/app/node"
-	"github.com/thank243/lightsailMon/config"
+	"github.com/Septrum101/lightsailMon/app/node"
+	"github.com/Septrum101/lightsailMon/config"
 )
 
 func New(c *config.Config) *Service {
@@ -87,19 +90,54 @@ func (s *Service) Close() {
 
 func (s *Service) Run() {
 	// check local network connectivity
+	if !checkIpv4() {
+		return
+	}
+
+	if checkIpv6() {
+		s.isIpv6 = true
+	}
+
+	s.changeNodeIps(s.getBlockNodes())
+}
+
+func checkIpv4() bool {
 	start := time.Now()
-	resp, err := resty.New().SetRetryCount(3).R().Get("http://connectivitycheck.platform.hicloud.com/generate_204")
+	resp, err := resty.New().SetRetryCount(3).R().Get("http://detectportal.firefox.com/success.txt")
 	if err != nil {
 		log.Error(err)
-		return
+		return false
 	}
 	delay := time.Since(start)
-	if resp.StatusCode() != 204 {
+	if resp.StatusCode() > 299 {
 		log.Error(resp.String())
-		return
+		return false
 	}
-	log.WithField("domian", "local.network.connectivity").Infof("Tcping: %d ms", delay.Milliseconds())
-	s.changeNodeIps(s.getBlockNodes())
+	log.WithField("domian", "ipv4.connectivity").Infof("Tcping: %d ms", delay.Milliseconds())
+	return true
+}
+
+func checkIpv6() bool {
+	dailer := new(net.Dialer)
+	httpTransport := &http.Transport{
+		DialContext: func(ctx context.Context, network, addr string) (net.Conn, error) {
+			return dailer.DialContext(ctx, "tcp6", addr)
+		},
+	}
+
+	start := time.Now()
+	resp, err := resty.New().SetTransport(httpTransport).SetRetryCount(3).R().Get("http://detectportal.firefox.com/success.txt")
+	if err != nil {
+		log.Error(err)
+		return false
+	}
+	delay := time.Since(start)
+	if resp.StatusCode() > 299 {
+		log.Error(resp.String())
+		return false
+	}
+	log.WithField("domian", "ipv6.connectivity").Infof("Tcping: %d ms", delay.Milliseconds())
+	return true
 }
 
 func (s *Service) changeNodeIps(blockNodes []*node.Node) {
@@ -164,6 +202,12 @@ func (s *Service) getBlockNodes() []*node.Node {
 			}()
 
 			n := s.nodes[i]
+
+			// check host ipv6 is availiable
+			if n.Network == "tcp4" && !s.isIpv6 {
+				log.Error("Host's ipv6 network is not supported")
+				return
+			}
 
 			go func() {
 				if err := n.UpdateDomainIp(); err != nil {

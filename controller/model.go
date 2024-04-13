@@ -5,8 +5,8 @@ import (
 
 	"github.com/robfig/cron/v3"
 
-	"github.com/thank243/lightsailMon/app/node"
-	"github.com/thank243/lightsailMon/config"
+	"github.com/Septrum101/lightsailMon/app/node"
+	"github.com/Septrum101/lightsailMon/config"
 )
 
 type Service struct {
@@ -19,4 +19,5 @@ type Service struct {
 	internal int
 	timeout  int
 	worker   chan bool
+	isIpv6   bool
 }

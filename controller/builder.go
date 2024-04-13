@@ -5,13 +5,13 @@ import (
 
 	log "github.com/sirupsen/logrus"
 
-	"github.com/thank243/lightsailMon/app/node"
-	"github.com/thank243/lightsailMon/common/ddns"
-	"github.com/thank243/lightsailMon/common/ddns/cloudflare"
-	"github.com/thank243/lightsailMon/common/ddns/google"
-	"github.com/thank243/lightsailMon/common/notify"
-	"github.com/thank243/lightsailMon/common/notify/pushplus"
-	"github.com/thank243/lightsailMon/common/notify/telegram"
+	"github.com/Septrum101/lightsailMon/app/node"
+	"github.com/Septrum101/lightsailMon/common/ddns"
+	"github.com/Septrum101/lightsailMon/common/ddns/cloudflare"
+	"github.com/Septrum101/lightsailMon/common/ddns/google"
+	"github.com/Septrum101/lightsailMon/common/notify"
+	"github.com/Septrum101/lightsailMon/common/notify/pushplus"
+	"github.com/Septrum101/lightsailMon/common/notify/telegram"
 )
 
 func (s *Service) buildNodes(isNotify bool, isDDNS bool) []*node.Node {

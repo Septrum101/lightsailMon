@@ -10,7 +10,7 @@ import (
 func TestCheckConnection(t *testing.T) {
 	log.SetLevel(log.DebugLevel)
 	n := &Node{
-		network: "tcp4",
+		Network: "tcp4",
 		ip:      "127.0.0.1",
 		port:    8080,
 		Timeout: time.Second * 5,

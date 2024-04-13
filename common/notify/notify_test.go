@@ -3,8 +3,8 @@ package notify
 import (
 	"testing"
 
-	"github.com/thank243/lightsailMon/common/notify/pushplus"
-	"github.com/thank243/lightsailMon/common/notify/telegram"
+	"github.com/Septrum101/lightsailMon/common/notify/pushplus"
+	"github.com/Septrum101/lightsailMon/common/notify/telegram"
 )
 
 func TestTelegram_Webhook(t *testing.T) {

@@ -13,17 +13,17 @@ import (
 	"github.com/aws/aws-sdk-go/service/lightsail"
 	"github.com/sirupsen/logrus"
 
-	"github.com/thank243/lightsailMon/config"
+	"github.com/Septrum101/lightsailMon/config"
 )
 
 func New(configNode *config.Node) *Node {
 	n := &Node{
 		Timeout: time.Second * 5,
 		Logger: logrus.WithFields(map[string]interface{}{
-			"domain": configNode.Domain,
+			"domain": fmt.Sprintf("%s(%s)", configNode.Domain, configNode.Network),
 		}),
 		name:    configNode.InstanceName,
-		network: configNode.Network,
+		Network: configNode.Network,
 		port:    configNode.Port,
 		domain:  configNode.Domain,
 	}
@@ -46,7 +46,7 @@ func New(configNode *config.Node) *Node {
 	if err != nil {
 		n.Logger.Error(err)
 	} else {
-		switch n.network {
+		switch n.Network {
 		case "tcp4":
 			n.ip = aws.StringValue(inst.Instance.PublicIpAddress)
 		case "tcp6":
@@ -119,7 +119,7 @@ func (n *Node) RenewIP() {
 	n.Logger.Warn("Change node IP")
 	isSuccess := false
 	for i := 0; i < 3; i++ {
-		switch n.network {
+		switch n.Network {
 		case "tcp4":
 			n.attachIP()
 			time.Sleep(time.Second * 3)
@@ -161,7 +161,7 @@ func (n *Node) updateDomain() error {
 
 	var err error
 	for i := 0; i < 3; i++ {
-		if err = n.DdnsClient.AddUpdateDomainRecords(n.network, n.domain, n.ip); err != nil {
+		if err = n.DdnsClient.AddUpdateDomainRecords(n.Network, n.domain, n.ip); err != nil {
 			time.Sleep(time.Second * 5)
 			continue
 		}
@@ -193,11 +193,11 @@ func (n *Node) pushMessage(isSuccess bool) error {
 
 func (n *Node) checkConnection() (int64, error) {
 	addr := n.ip
-	if n.network == "tcp6" {
+	if n.Network == "tcp6" {
 		addr = "[" + n.ip + "]"
 	}
 
-	d, conn, err := dialWithRetry(n.network, addr+":"+strconv.Itoa(n.port), n.Timeout, 3, 5*time.Second)
+	d, conn, err := dialWithRetry(n.Network, addr+":"+strconv.Itoa(n.port), n.Timeout, 3, 5*time.Second)
 	if err != nil {
 		return 0, err
 	}
@@ -217,7 +217,7 @@ func (n *Node) UpdateDomainIp() error {
 		err       error
 	)
 
-	switch n.network {
+	switch n.Network {
 	case "tcp4":
 		domainIps, err = n.DdnsClient.GetDomainRecords("A", n.domain)
 	case "tcp6":
@@ -228,7 +228,7 @@ func (n *Node) UpdateDomainIp() error {
 	}
 
 	if _, ok := domainIps[n.ip]; !ok {
-		if err := n.DdnsClient.AddUpdateDomainRecords(n.network, n.domain, n.ip); err != nil {
+		if err := n.DdnsClient.AddUpdateDomainRecords(n.Network, n.domain, n.ip); err != nil {
 			return err
 		}
 	}

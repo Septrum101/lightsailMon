@@ -4,7 +4,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/thank243/lightsailMon/common/ddns/google"
+	"github.com/Septrum101/lightsailMon/common/ddns/google"
 )
 
 func TestGoogle(t *testing.T) {

@@ -10,8 +10,8 @@ import (
 	"github.com/fsnotify/fsnotify"
 	log "github.com/sirupsen/logrus"
 
-	"github.com/thank243/lightsailMon/config"
-	"github.com/thank243/lightsailMon/controller"
+	"github.com/Septrum101/lightsailMon/config"
+	"github.com/Septrum101/lightsailMon/controller"
 )
 
 func main() {
