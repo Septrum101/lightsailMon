@@ -6,6 +6,7 @@ type Config struct {
 	Timeout    int
 	Nameserver string
 	Concurrent int
+	Ipv6       bool
 	DDNS       *DDNS
 	Notify     *Notify
 	Nodes      []*Node
@@ -16,7 +17,7 @@ type Node struct {
 	SecretAccessKey string
 	Region          string
 	InstanceName    string
-	Network         string
+	Network         []string
 	Domain          string
 	Port            int
 }

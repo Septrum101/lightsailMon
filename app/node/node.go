@@ -16,45 +16,51 @@ import (
 	"github.com/Septrum101/lightsailMon/config"
 )
 
-func New(configNode *config.Node) *Node {
-	n := &Node{
-		Timeout: time.Second * 5,
-		Logger: logrus.WithFields(map[string]interface{}{
-			"domain": fmt.Sprintf("%s(%s)", configNode.Domain, configNode.Network),
-		}),
-		name:    configNode.InstanceName,
-		Network: configNode.Network,
-		port:    configNode.Port,
-		domain:  configNode.Domain,
-	}
-
-	// create account session
-	sess, err := session.NewSession(&aws.Config{
-		Credentials: credentials.NewStaticCredentials(
-			configNode.AccessKeyID,
-			configNode.SecretAccessKey,
-			"",
-		),
-	})
-	if err != nil {
-		n.Logger.Panic(err)
-	}
-	n.Svc = lightsail.New(sess, aws.NewConfig().WithRegion(configNode.Region))
-
-	// Get lightsail instance IP and sync to domain
-	inst, err := n.Svc.GetInstance(&lightsail.GetInstanceInput{InstanceName: aws.String(n.name)})
-	if err != nil {
-		n.Logger.Error(err)
-	} else {
-		switch n.Network {
-		case "tcp4":
-			n.ip = aws.StringValue(inst.Instance.PublicIpAddress)
-		case "tcp6":
-			n.ip = aws.StringValue(inst.Instance.Ipv6Addresses[0])
+func New(configNode *config.Node) []*Node {
+	var nodes []*Node
+	for i := range configNode.Network {
+		network := configNode.Network[i]
+		n := &Node{
+			Timeout: time.Second * 5,
+			Logger: logrus.WithFields(map[string]interface{}{
+				"domain": fmt.Sprintf("%s(%s)", configNode.Domain, network),
+			}),
+			name:    configNode.InstanceName,
+			Network: network,
+			port:    configNode.Port,
+			domain:  configNode.Domain,
 		}
+
+		// create account session
+		sess, err := session.NewSession(&aws.Config{
+			Credentials: credentials.NewStaticCredentials(
+				configNode.AccessKeyID,
+				configNode.SecretAccessKey,
+				"",
+			),
+		})
+		if err != nil {
+			n.Logger.Panic(err)
+		}
+		n.Svc = lightsail.New(sess, aws.NewConfig().WithRegion(configNode.Region))
+
+		// Get lightsail instance IP and sync to domain
+		inst, err := n.Svc.GetInstance(&lightsail.GetInstanceInput{InstanceName: aws.String(n.name)})
+		if err != nil {
+			n.Logger.Error(err)
+		} else {
+			switch n.Network {
+			case "tcp4":
+				n.ip = aws.StringValue(inst.Instance.PublicIpAddress)
+			case "tcp6":
+				n.ip = aws.StringValue(inst.Instance.Ipv6Addresses[0])
+			}
+		}
+
+		nodes = append(nodes, n)
 	}
 
-	return n
+	return nodes
 }
 
 // attachIP is a helper function to attach static IP to instance

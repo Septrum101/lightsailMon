@@ -34,5 +34,5 @@ jobs:
         with:
           platforms: linux/amd64,linux/arm64,linux/arm/v7
           push: true
-          tags: ghcr.io/${{ github.actor }}/lightsailmon:dev
+          tags: ghcr.io/septrum101/lightsailmon:dev
           build-args: VERSION=dev

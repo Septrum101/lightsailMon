@@ -47,24 +47,26 @@ func (s *Service) buildNodes(isNotify bool, isDDNS bool) []*node.Node {
 
 	var nodes []*node.Node
 	for i := range s.conf.Nodes {
-		newNode := node.New(s.conf.Nodes[i])
+		newNodes := node.New(s.conf.Nodes[i])
+		for ii := range newNodes {
+			newNode := newNodes[ii]
+			// set ddns client
+			if isDDNS {
+				newNode.DdnsClient = ddnsCli
+			}
 
-		// set ddns client
-		if isDDNS {
-			newNode.DdnsClient = ddnsCli
+			// set notifier
+			if isNotify {
+				newNode.Notifier = notifier
+			}
+
+			// set connection timeout
+			if s.conf.Timeout > 0 {
+				newNode.Timeout = time.Second * time.Duration(s.conf.Timeout)
+			}
+
+			nodes = append(nodes, newNode)
 		}
-
-		// set notifier
-		if isNotify {
-			newNode.Notifier = notifier
-		}
-
-		// set connection timeout
-		if s.conf.Timeout > 0 {
-			newNode.Timeout = time.Second * time.Duration(s.conf.Timeout)
-		}
-
-		nodes = append(nodes, newNode)
 	}
 
 	return nodes

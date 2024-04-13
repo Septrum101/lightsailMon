@@ -8,8 +8,8 @@ COPY . .
 
 RUN go mod tidy
 RUN go build -v -o lightsailMon -trimpath -ldflags "-s -w \
-    -X 'github.com/thank243/lightsailMon/config.date=$(date -Iseconds)' \
-    -X 'github.com/thank243/lightsailMon/config.version=$VERSION' \
+    -X 'github.com/Septrum101/lightsailMon/config.date=$(date -Iseconds)' \
+    -X 'github.com/Septrum101/lightsailMon/config.version=$VERSION' \
     " ./cmd
 
 # Release

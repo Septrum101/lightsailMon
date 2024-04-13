@@ -48,8 +48,8 @@ func New(c *config.Config) *Service {
 	if isNotify {
 		notifierStatus = strings.Title(c.Notify.Provider)
 	}
-	fmt.Printf("Log level: %s, Concurrent: %d, DDNS: %s, Notifier: %s\n", c.LogLevel, c.Concurrent,
-		ddnsStatus, notifierStatus)
+	fmt.Printf("Log level: %s, Concurrent: %d, DDNS: %s, Notifier: %s, IPv6: %t\n", c.LogLevel, c.Concurrent,
+		ddnsStatus, notifierStatus, c.Ipv6)
 
 	nodes := s.buildNodes(isNotify, isDDNS)
 	if len(nodes) == 0 {
@@ -94,7 +94,7 @@ func (s *Service) Run() {
 		return
 	}
 
-	if checkIpv6() {
+	if s.conf.Ipv6 && checkIpv6() {
 		s.isIpv6 = true
 	}
 
@@ -204,8 +204,8 @@ func (s *Service) getBlockNodes() []*node.Node {
 			n := s.nodes[i]
 
 			// check host ipv6 is availiable
-			if n.Network == "tcp4" && !s.isIpv6 {
-				log.Error("Host's ipv6 network is not supported")
+			if n.Network == "tcp6" && !s.isIpv6 {
+				n.Logger.Error("Host's ipv6 network is not supported")
 				return
 			}
 

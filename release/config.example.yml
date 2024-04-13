@@ -29,7 +29,7 @@ Nodes:
     SecretAccessKey: YOUR_AWS_SecretAccessKey
     Region: ap-northeast-1 # AWS service endpoints, check https://docs.aws.amazon.com/general/latest/gr/rande.html for help
     InstanceName: Debian-1
-    Network: tcp4 # The type of network (tcp4, tcp6)
+    Network: [tcp4] # The type of network (tcp4, tcp6)
     Domain: node1.test.com # The node domain
     Port: 8080 # The node port
 
@@ -37,6 +37,6 @@ Nodes:
     SecretAccessKey: YOUR_AWS_SecretAccessKey
     Region: ap-northeast-1 # AWS service endpoints, check https://docs.aws.amazon.com/general/latest/gr/rande.html for help
     InstanceName: Debian-1
-    Network: tcp4 # The type of network (tcp4, tcp6)
+    Network: [tcp4, tcp6] # The type of network (tcp4, tcp6)
     Domain: node2.test.com # The node domain
     Port: 8080 # The node port
