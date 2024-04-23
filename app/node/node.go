@@ -53,7 +53,9 @@ func New(configNode *config.Node) []*Node {
 			case "tcp4":
 				n.ip = aws.StringValue(inst.Instance.PublicIpAddress)
 			case "tcp6":
-				n.ip = aws.StringValue(inst.Instance.Ipv6Addresses[0])
+				if len(inst.Instance.Ipv6Addresses) > 0 {
+					n.ip = aws.StringValue(inst.Instance.Ipv6Addresses[0])
+				}
 			}
 		}
 
@@ -87,10 +89,12 @@ func (n *Node) detachIP() {
 // disableDualStack is a helper function to disable dual stack network
 func (n *Node) disableDualStack() {
 	n.Logger.Debug("Disable dual-stack network")
-	if _, err := n.Svc.SetIpAddressTypeRequest(&lightsail.SetIpAddressTypeInput{
+	req, _ := n.Svc.SetIpAddressTypeRequest(&lightsail.SetIpAddressTypeInput{
 		IpAddressType: aws.String("ipv4"),
 		ResourceName:  aws.String(n.name),
-	}); err != nil {
+		ResourceType:  aws.String("Instance"),
+	})
+	if err := req.Send(); err != nil {
 		n.Logger.Error(err)
 	}
 }
@@ -98,10 +102,12 @@ func (n *Node) disableDualStack() {
 // enableDualStack is a helper function to enable dual stack network
 func (n *Node) enableDualStack() {
 	n.Logger.Debug("Enable dual-stack network")
-	if _, err := n.Svc.SetIpAddressTypeRequest(&lightsail.SetIpAddressTypeInput{
+	req, _ := n.Svc.SetIpAddressTypeRequest(&lightsail.SetIpAddressTypeInput{
 		IpAddressType: aws.String("dualstack"),
 		ResourceName:  aws.String(n.name),
-	}); err != nil {
+		ResourceType:  aws.String("Instance"),
+	})
+	if err := req.Send(); err != nil {
 		n.Logger.Error(err)
 	}
 }

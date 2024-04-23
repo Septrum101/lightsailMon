@@ -1,6 +1,7 @@
 package controller
 
 import (
+	"github.com/go-resty/resty/v2"
 	"sync"
 
 	"github.com/robfig/cron/v3"
@@ -10,11 +11,11 @@ import (
 )
 
 type Service struct {
-	conf  *config.Config
-	nodes []*node.Node
-	cron  *cron.Cron
-	wg    sync.WaitGroup
-
+	conf     *config.Config
+	nodes    []*node.Node
+	cron     *cron.Cron
+	wg       sync.WaitGroup
+	cli      *resty.Client
 	running  bool
 	internal int
 	timeout  int

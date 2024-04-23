@@ -1,6 +1,9 @@
 package node
 
 import (
+	"github.com/Septrum101/lightsailMon/config"
+	"github.com/aws/aws-sdk-go/aws"
+	"github.com/aws/aws-sdk-go/service/lightsail"
 	"testing"
 	"time"
 
@@ -16,4 +19,15 @@ func TestCheckConnection(t *testing.T) {
 		Timeout: time.Second * 5,
 	}
 	t.Log(n.checkConnection())
+}
+
+func TestDualStack(t *testing.T) {
+	c := new(config.Config)
+	config.GetConfig().Unmarshal(c)
+	node := New(c.Nodes[0])
+	n := node[0]
+
+	n.Svc.GetInstance(&lightsail.GetInstanceInput{InstanceName: aws.String(n.name)})
+	n.disableDualStack()
+	n.enableDualStack()
 }

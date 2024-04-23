@@ -25,6 +25,7 @@ func New(c *config.Config) *Service {
 		internal: c.Internal,
 		timeout:  c.Timeout,
 		worker:   make(chan bool, c.Concurrent),
+		cli:      resty.New().SetLogger(log.StandardLogger()).SetRetryCount(3),
 	}
 
 	// init log level
@@ -90,20 +91,29 @@ func (s *Service) Close() {
 
 func (s *Service) Run() {
 	// check local network connectivity
-	if !checkIpv4() {
+	if !s.checkIpv4() {
 		return
 	}
 
-	if s.conf.Ipv6 && checkIpv6() {
+	if s.conf.Ipv6 && s.checkIpv6() {
 		s.isIpv6 = true
+	} else {
+		s.isIpv6 = false
 	}
 
 	s.changeNodeIps(s.getBlockNodes())
 }
 
-func checkIpv4() bool {
+func (s *Service) checkIpv4() bool {
+	dailer := new(net.Dialer)
+	httpTransport := &http.Transport{
+		DialContext: func(ctx context.Context, network, addr string) (net.Conn, error) {
+			return dailer.DialContext(ctx, "tcp4", addr)
+		},
+	}
+
 	start := time.Now()
-	resp, err := resty.New().SetRetryCount(3).R().Get("http://detectportal.firefox.com/success.txt")
+	resp, err := s.cli.SetTransport(httpTransport).R().Get("http://detectportal.firefox.com/success.txt")
 	if err != nil {
 		log.Error(err)
 		return false
@@ -117,7 +127,7 @@ func checkIpv4() bool {
 	return true
 }
 
-func checkIpv6() bool {
+func (s *Service) checkIpv6() bool {
 	dailer := new(net.Dialer)
 	httpTransport := &http.Transport{
 		DialContext: func(ctx context.Context, network, addr string) (net.Conn, error) {
@@ -126,7 +136,7 @@ func checkIpv6() bool {
 	}
 
 	start := time.Now()
-	resp, err := resty.New().SetTransport(httpTransport).SetRetryCount(3).R().Get("http://detectportal.firefox.com/success.txt")
+	resp, err := s.cli.SetTransport(httpTransport).R().Get("http://detectportal.firefox.com/success.txt")
 	if err != nil {
 		log.Error(err)
 		return false
