@@ -3,7 +3,7 @@ FROM golang:alpine AS builder
 
 ARG VERSION
 
-WORKDIR /app
+WORKDIR /build
 COPY . .
 
 RUN go mod tidy
@@ -17,5 +17,6 @@ FROM alpine
 RUN apk --update --no-cache add tzdata ca-certificates
 ENV TZ Asia/Shanghai
 
-COPY --from=builder /app/lightsailMon /app/lightsailMon
+WORKDIR /app
+COPY --from=builder /build/lightsailMon .
 ENTRYPOINT ["/app/lightsailMon"]
