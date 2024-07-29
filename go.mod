@@ -3,7 +3,7 @@ module github.com/Septrum101/lightsailMon
 go 1.22
 
 require (
-	github.com/aws/aws-sdk-go v1.54.16
+	github.com/aws/aws-sdk-go v1.55.3
 	github.com/cloudflare/cloudflare-go v0.99.0
 	github.com/fsnotify/fsnotify v1.7.0
 	github.com/go-resty/resty/v2 v2.13.1
