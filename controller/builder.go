@@ -20,11 +20,12 @@ func (s *Service) buildNodes(isNotify bool, isDDNS bool) []*node.Node {
 	if isNotify {
 		switch s.conf.Notify.Provider {
 		case "pushplus":
-			notifier = &pushplus.PushPlus{Token: s.conf.Notify.Config["pushplus_token"].(string)}
+			notifier = &pushplus.PushPlus{Token: s.conf.Notify.Config["pushplus_token"]}
 		case "telegram":
 			notifier = &telegram.Telegram{
-				ChatID: int64(s.conf.Notify.Config["telegram_chatid"].(int)),
-				Token:  s.conf.Notify.Config["telegram_token"].(string),
+				ApiHost: s.conf.Notify.Config["telegram_apihost"],
+				ChatID:  s.conf.Notify.Config["telegram_chatid"],
+				Token:   s.conf.Notify.Config["telegram_token"],
 			}
 		}
 	}

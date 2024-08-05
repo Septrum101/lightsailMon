@@ -1,6 +1,7 @@
 package telegram
 
 type Telegram struct {
-	ChatID int64
-	Token  string
+	ApiHost string
+	ChatID  string
+	Token   string
 }
