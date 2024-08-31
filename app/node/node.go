@@ -191,11 +191,11 @@ func (n *Node) pushMessage(isSuccess bool) error {
 	}
 
 	if isSuccess {
-		if err := n.Notifier.Webhook(n.domain, fmt.Sprintf("IP changed: %s", n.ip)); err != nil {
+		if err := n.Notifier.Webhook(n.domain+"("+n.Network+")", fmt.Sprintf("IP changed: %s", n.ip)); err != nil {
 			return err
 		}
 	} else {
-		if err := n.Notifier.Webhook(n.domain, fmt.Sprintf("[%s] Connection block after IP refresh 3 times", n.domain)); err != nil {
+		if err := n.Notifier.Webhook(n.domain+"("+n.Network+")", fmt.Sprintf("[%s] Connection block after IP refresh 3 times", n.domain)); err != nil {
 			return err
 		}
 	}

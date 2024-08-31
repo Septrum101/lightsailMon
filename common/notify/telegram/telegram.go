@@ -14,7 +14,7 @@ func (t *Telegram) Webhook(title string, content string) error {
 	for i := 0; i < 3; i++ {
 		_, err := resty.New().SetRetryCount(3).R().SetBody(map[string]any{
 			"chat_id": t.ChatID,
-			"text": fmt.Sprintf("LightsailMon\nNode: %s\n%s",
+			"text": fmt.Sprintf("#LightsailMon\nNode: %s\n%s",
 				title,
 				content,
 			),
