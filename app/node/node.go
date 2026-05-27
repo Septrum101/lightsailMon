@@ -1,22 +1,24 @@
 package node
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"net"
 	"strconv"
 	"time"
 
-	"github.com/aws/aws-sdk-go/aws"
-	"github.com/aws/aws-sdk-go/aws/credentials"
-	"github.com/aws/aws-sdk-go/aws/session"
-	"github.com/aws/aws-sdk-go/service/lightsail"
+	"github.com/aws/aws-sdk-go-v2/aws"
+	"github.com/aws/aws-sdk-go-v2/config"
+	"github.com/aws/aws-sdk-go-v2/credentials"
+	"github.com/aws/aws-sdk-go-v2/service/lightsail"
+	"github.com/aws/aws-sdk-go-v2/service/lightsail/types"
 	"github.com/sirupsen/logrus"
 
-	"github.com/Septrum101/lightsailMon/config"
+	cfg "github.com/Septrum101/lightsailMon/config"
 )
 
-func New(configNode *config.Node) []*Node {
+func New(configNode *cfg.Node) []*Node {
 	var nodes []*Node
 	for i := range configNode.Network {
 		network := configNode.Network[i]
@@ -32,29 +34,30 @@ func New(configNode *config.Node) []*Node {
 		}
 
 		// create account session
-		sess, err := session.NewSession(&aws.Config{
-			Credentials: credentials.NewStaticCredentials(
+		cfg, err := config.LoadDefaultConfig(context.Background(),
+			config.WithRegion(configNode.Region),
+			config.WithCredentialsProvider(credentials.NewStaticCredentialsProvider(
 				configNode.AccessKeyID,
 				configNode.SecretAccessKey,
 				"",
-			),
-		})
+			)),
+		)
 		if err != nil {
 			n.Logger.Panic(err)
 		}
-		n.Svc = lightsail.New(sess, aws.NewConfig().WithRegion(configNode.Region))
+		n.Svc = lightsail.NewFromConfig(cfg)
 
 		// Get lightsail instance IP and sync to domain
-		inst, err := n.Svc.GetInstance(&lightsail.GetInstanceInput{InstanceName: aws.String(n.name)})
+		inst, err := n.Svc.GetInstance(context.Background(), &lightsail.GetInstanceInput{InstanceName: aws.String(n.name)})
 		if err != nil {
 			n.Logger.Error(err)
 		} else {
 			switch n.Network {
 			case "tcp4":
-				n.ip = aws.StringValue(inst.Instance.PublicIpAddress)
+				n.ip = aws.ToString(inst.Instance.PublicIpAddress)
 			case "tcp6":
 				if len(inst.Instance.Ipv6Addresses) > 0 {
-					n.ip = aws.StringValue(inst.Instance.Ipv6Addresses[0])
+					n.ip = aws.ToString(&inst.Instance.Ipv6Addresses[0])
 				}
 			}
 		}
@@ -68,7 +71,7 @@ func New(configNode *config.Node) []*Node {
 // attachIP is a helper function to attach static IP to instance
 func (n *Node) attachIP() {
 	n.Logger.Debug("Attach static IP")
-	if _, err := n.Svc.AttachStaticIp(&lightsail.AttachStaticIpInput{
+	if _, err := n.Svc.AttachStaticIp(context.Background(), &lightsail.AttachStaticIpInput{
 		InstanceName: aws.String(n.name),
 		StaticIpName: aws.String("LightsailMon"),
 	}); err != nil {
@@ -79,7 +82,7 @@ func (n *Node) attachIP() {
 // detachIP is a helper function to detach static IP from instance
 func (n *Node) detachIP() {
 	n.Logger.Debug("Detach static IP")
-	if _, err := n.Svc.DetachStaticIp(&lightsail.DetachStaticIpInput{
+	if _, err := n.Svc.DetachStaticIp(context.Background(), &lightsail.DetachStaticIpInput{
 		StaticIpName: aws.String("LightsailMon"),
 	}); err != nil {
 		n.Logger.Error(err)
@@ -89,12 +92,11 @@ func (n *Node) detachIP() {
 // disableDualStack is a helper function to disable dual stack network
 func (n *Node) disableDualStack() {
 	n.Logger.Debug("Disable dual-stack network")
-	req, _ := n.Svc.SetIpAddressTypeRequest(&lightsail.SetIpAddressTypeInput{
-		IpAddressType: aws.String("ipv4"),
+	if _, err := n.Svc.SetIpAddressType(context.Background(), &lightsail.SetIpAddressTypeInput{
+		IpAddressType: types.IpAddressTypeIpv4,
 		ResourceName:  aws.String(n.name),
-		ResourceType:  aws.String("Instance"),
-	})
-	if err := req.Send(); err != nil {
+		ResourceType:  types.ResourceTypeInstance,
+	}); err != nil {
 		n.Logger.Error(err)
 	}
 }
@@ -102,28 +104,28 @@ func (n *Node) disableDualStack() {
 // enableDualStack is a helper function to enable dual stack network
 func (n *Node) enableDualStack() {
 	n.Logger.Debug("Enable dual-stack network")
-	req, _ := n.Svc.SetIpAddressTypeRequest(&lightsail.SetIpAddressTypeInput{
-		IpAddressType: aws.String("dualstack"),
+	if _, err := n.Svc.SetIpAddressType(context.Background(), &lightsail.SetIpAddressTypeInput{
+		IpAddressType: types.IpAddressTypeDualstack,
 		ResourceName:  aws.String(n.name),
-		ResourceType:  aws.String("Instance"),
-	})
-	if err := req.Send(); err != nil {
+		ResourceType:  types.ResourceTypeInstance,
+	}); err != nil {
 		n.Logger.Error(err)
 	}
 }
 
 // setIp is a helper function to update instance IP address
 func (n *Node) setIp(ipType string) {
-	inst, err := n.Svc.GetInstance(&lightsail.GetInstanceInput{InstanceName: aws.String(n.name)})
+	inst, err := n.Svc.GetInstance(context.Background(), &lightsail.GetInstanceInput{InstanceName: aws.String(n.name)})
 	if err != nil {
 		n.Logger.Error(err)
+		return
 	}
 
 	switch ipType {
 	case "ipv4":
-		n.ip = aws.StringValue(inst.Instance.PublicIpAddress)
+		n.ip = aws.ToString(inst.Instance.PublicIpAddress)
 	case "ipv6":
-		n.ip = aws.StringValue(inst.Instance.Ipv6Addresses[0])
+		n.ip = aws.ToString(&inst.Instance.Ipv6Addresses[0])
 	}
 }
 
@@ -154,14 +156,14 @@ func (n *Node) RenewIP() {
 		}
 	}
 
+	if err := n.updateDomain(); err != nil {
+		n.Logger.Info(err)
+	}
+
 	if err := n.pushMessage(isSuccess); err != nil {
 		n.Logger.Error(err)
 	} else {
 		n.Logger.Info("Push message success")
-	}
-
-	if err := n.updateDomain(); err != nil {
-		n.Logger.Info(err)
 	}
 }
 
@@ -251,8 +253,7 @@ func (n *Node) UpdateDomainIp() error {
 func (n *Node) IsBlock() bool {
 	delay, err := n.checkConnection()
 	if err != nil {
-		var v *net.OpError
-		if errors.As(err, &v) && v.Addr != nil {
+		if pathErr, ok := errors.AsType[*net.OpError](err); ok && pathErr.Addr != nil {
 			n.Logger.Errorf("after 3 attempts, last error: %s", err)
 			return true
 		}
@@ -268,7 +269,7 @@ func dialWithRetry(network, address string, timeout time.Duration, maxRetries in
 	var err error
 	var conn net.Conn
 
-	for i := 0; i < maxRetries; i++ {
+	for range maxRetries {
 		start := time.Now()
 		conn, err = net.DialTimeout(network, address, timeout)
 		if err == nil {

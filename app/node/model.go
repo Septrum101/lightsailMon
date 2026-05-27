@@ -3,7 +3,7 @@ package node
 import (
 	"time"
 
-	"github.com/aws/aws-sdk-go/service/lightsail"
+	"github.com/aws/aws-sdk-go-v2/service/lightsail"
 	"github.com/sirupsen/logrus"
 
 	"github.com/Septrum101/lightsailMon/common/ddns"
@@ -12,7 +12,7 @@ import (
 
 type Node struct {
 	Network    string
-	Svc        *lightsail.Lightsail
+	Svc        *lightsail.Client
 	Timeout    time.Duration
 	DdnsClient ddns.Client
 	Notifier   notify.Notify

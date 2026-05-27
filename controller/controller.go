@@ -8,8 +8,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/aws/aws-sdk-go/aws"
-	"github.com/aws/aws-sdk-go/service/lightsail"
+	"github.com/aws/aws-sdk-go-v2/aws"
+	"github.com/aws/aws-sdk-go-v2/service/lightsail"
 	"github.com/go-resty/resty/v2"
 	"github.com/robfig/cron/v3"
 	log "github.com/sirupsen/logrus"
@@ -105,15 +105,16 @@ func (s *Service) Run() {
 }
 
 func (s *Service) checkIpv4() bool {
-	dailer := new(net.Dialer)
-	httpTransport := &http.Transport{
+	dialer := &net.Dialer{}
+	client := resty.New().SetTimeout(time.Duration(s.timeout) * time.Second)
+	client.SetTransport(&http.Transport{
 		DialContext: func(ctx context.Context, network, addr string) (net.Conn, error) {
-			return dailer.DialContext(ctx, "tcp4", addr)
+			return dialer.DialContext(ctx, "tcp4", addr)
 		},
-	}
+	})
 
 	start := time.Now()
-	resp, err := s.cli.SetTransport(httpTransport).R().Get("http://detectportal.firefox.com/success.txt")
+	resp, err := client.R().Get("http://www.baidu.com/favicon.ico")
 	if err != nil {
 		log.Error(err)
 		return false
@@ -128,15 +129,16 @@ func (s *Service) checkIpv4() bool {
 }
 
 func (s *Service) checkIpv6() bool {
-	dailer := new(net.Dialer)
-	httpTransport := &http.Transport{
+	dialer := &net.Dialer{}
+	client := resty.New().SetTimeout(time.Duration(s.timeout) * time.Second)
+	client.SetTransport(&http.Transport{
 		DialContext: func(ctx context.Context, network, addr string) (net.Conn, error) {
-			return dailer.DialContext(ctx, "tcp6", addr)
+			return dialer.DialContext(ctx, "tcp6", addr)
 		},
-	}
+	})
 
 	start := time.Now()
-	resp, err := s.cli.SetTransport(httpTransport).R().Get("http://detectportal.firefox.com/success.txt")
+	resp, err := client.R().Get("http://www.baidu.com")
 	if err != nil {
 		log.Error(err)
 		return false
@@ -153,9 +155,9 @@ func (s *Service) checkIpv6() bool {
 func (s *Service) changeNodeIps(blockNodes []*node.Node) {
 	if len(blockNodes) > 0 {
 		// get blocked node lightsail service
-		svcMap := make(map[*lightsail.Lightsail]bool)
-		for _, node := range blockNodes {
-			svcMap[node.Svc] = true
+		svcMap := make(map[*lightsail.Client]bool)
+		for _, n := range blockNodes {
+			svcMap[n.Svc] = true
 		}
 
 		s.allocateStaticIps(svcMap)
@@ -184,12 +186,12 @@ func (s *Service) changeNodeIps(blockNodes []*node.Node) {
 }
 
 // Release and Allocate Static Ip
-func (s *Service) allocateStaticIps(svcMap map[*lightsail.Lightsail]bool) {
+func (s *Service) allocateStaticIps(svcMap map[*lightsail.Client]bool) {
 	for svc := range svcMap {
 		s.releaseStaticIps(svc)
 
-		log.WithField("region", *svc.Config.Region).Debug("Allocate region static IP")
-		if _, err := svc.AllocateStaticIp(&lightsail.AllocateStaticIpInput{
+		log.Debug("Allocate region static IP")
+		if _, err := svc.AllocateStaticIp(context.Background(), &lightsail.AllocateStaticIpInput{
 			StaticIpName: aws.String("LightsailMon"),
 		}); err != nil {
 			log.Error(err)
@@ -205,13 +207,11 @@ func (s *Service) getBlockNodes() []*node.Node {
 		s.worker <- true
 		s.wg.Add(1)
 
-		go func(i int) {
+		go func(n *node.Node) {
 			defer func() {
 				<-s.worker
 				s.wg.Done()
 			}()
-
-			n := s.nodes[i]
 
 			// check host ipv6 is availiable
 			if n.Network == "tcp6" && !s.isIpv6 {
@@ -229,7 +229,7 @@ func (s *Service) getBlockNodes() []*node.Node {
 				// add to blockNodes channel
 				nodesChan <- n
 			}
-		}(i)
+		}(s.nodes[i])
 	}
 
 	// wait after all node is checked
@@ -247,14 +247,14 @@ func (s *Service) getBlockNodes() []*node.Node {
 	return blockedNodes
 }
 
-func (s *Service) releaseStaticIps(svc *lightsail.Lightsail) {
-	log.WithField("region", *svc.Config.Region).Debug("Release region static IPs")
-	if ips, err := svc.GetStaticIps(&lightsail.GetStaticIpsInput{}); err != nil {
+func (s *Service) releaseStaticIps(svc *lightsail.Client) {
+	log.Debug("Release region static IPs")
+	if ips, err := svc.GetStaticIps(context.Background(), &lightsail.GetStaticIpsInput{}); err != nil {
 		log.Error(err)
 	} else {
 		for i := range ips.StaticIps {
 			ip := ips.StaticIps[i]
-			if _, err := svc.ReleaseStaticIp(&lightsail.ReleaseStaticIpInput{StaticIpName: ip.Name}); err != nil {
+			if _, err := svc.ReleaseStaticIp(context.Background(), &lightsail.ReleaseStaticIpInput{StaticIpName: ip.Name}); err != nil {
 				log.Error(err)
 			}
 		}
